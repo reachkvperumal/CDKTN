@@ -3,7 +3,9 @@ spring:
     name: cdktn-terraform-generator
   main:
     banner-mode: "off"
+    web-application-type: none
 
 logging:
   level:
     com.blackrock.terrain: INFO
+
