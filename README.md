@@ -44,16 +44,16 @@ java -jar target/cdktn-terraform-generator-1.0.0-SNAPSHOT.jar <input-yaml-path> 
 ### 1. Input File (`source.yaml`)
 ```yaml
 storage_accounts:
-  adax_doc_grok:
-    id: "dgrok"
-    tribe: "docgrok"
+  abcd_dca_abdc:
+    id: "d123"
+    tribe: "dev`"
     performance: "Standard"
     redundancy: "LRS"
     accessTier: "Hot"
     tags:
       blk-business-unit: "AI-Platform"
     containers:
-      adax-doc-grok-data:
+      abcd_dca_abdc-data:
         access_tier: "Hot"
 ```
 
@@ -78,23 +78,23 @@ cdktf_out/
 {
   "resource": {
     "azurerm_storage_account": {
-      "sa_adax_doc_grok": {
+      "sa_abcd_dca_abdc": {
         "access_tier": "Hot",
-        "account_id": "dgrok",
+        "account_id": "d123",
         "account_replication_type": "LRS",
         "account_tier": "Standard",
-        "name": "adax_doc_grok",
+        "name": "abcd_dca_abdc",
         "tags": {
           "blk-business-unit": "AI-Platform"
         },
-        "tribe": "docgrok"
+        "tribe": "d1234"
       }
     },
     "azurerm_storage_container": {
-      "container_adax_doc_grok_adax-doc-grok-data": {
+      "container_abcd_dca_abdc": {
         "access_tier": "Hot",
-        "name": "adax-doc-grok-data",
-        "storage_account_name": "adax_doc_grok"
+        "name": "data-abcd_dca_abdc",
+        "storage_account_name": "abcd_dca_abdc"
       }
     }
   }
