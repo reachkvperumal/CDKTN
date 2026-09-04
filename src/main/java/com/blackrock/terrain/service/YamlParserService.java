@@ -2,6 +2,7 @@ package com.blackrock.terrain.service;
 
 import com.blackrock.terrain.dto.RootConfig;
 import com.blackrock.terrain.dto.StorageAccountDto;
+import com.blackrock.terrain.exception.ConfigurationLoadException;
 import com.blackrock.terrain.exception.TerraformRepoInitializationException;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -38,6 +39,8 @@ public class YamlParserService {
     public RootConfig parseYamlFile(File file) {
         try (InputStream is = new FileInputStream(file)) {
             return parseYamlStream(is);
+        } catch (ConfigurationLoadException | TerraformRepoInitializationException e) {
+            throw e;
         } catch (Exception e) {
             throw new TerraformRepoInitializationException("Failed to parse YAML file: " + (file != null ? file.getName() : "null"), e);
         }
@@ -85,7 +88,7 @@ public class YamlParserService {
 
             validateStorageAccounts(rootConfig.getStorageAccounts());
             return rootConfig;
-        } catch (TerraformRepoInitializationException e) {
+        } catch (ConfigurationLoadException | TerraformRepoInitializationException e) {
             throw e;
         } catch (Exception e) {
             throw new TerraformRepoInitializationException("Error occurred while parsing YAML stream", e);
@@ -132,7 +135,7 @@ public class YamlParserService {
                                     validateStorageAccountId(fieldName, dto);
                                     result.put(fieldName, dto);
                                 }
-                            } catch (TerraformRepoInitializationException e) {
+                            } catch (ConfigurationLoadException | TerraformRepoInitializationException e) {
                                 throw e;
                             } catch (Exception e) {
                                 log.debug("Skipping non-storage account property token: {}", fieldName);
@@ -143,7 +146,7 @@ public class YamlParserService {
             }
             log.info("Streaming YAML parse completed. Extracted {} entries.", result.size());
             return result;
-        } catch (TerraformRepoInitializationException e) {
+        } catch (ConfigurationLoadException | TerraformRepoInitializationException e) {
             throw e;
         } catch (Exception e) {
             throw new TerraformRepoInitializationException("Failed streaming YAML parsing", e);
@@ -158,7 +161,7 @@ public class YamlParserService {
 
     private void validateStorageAccountId(String accountName, StorageAccountDto dto) {
         if (dto == null || dto.getId() == null || dto.getId().isBlank()) {
-            throw new TerraformRepoInitializationException(
+            throw new ConfigurationLoadException(
                     "Validation Error: Mandatory attribute 'id' is missing or blank for storage account '" + accountName + "'"
             );
         }

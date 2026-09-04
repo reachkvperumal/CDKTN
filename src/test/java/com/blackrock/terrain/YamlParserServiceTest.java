@@ -2,6 +2,7 @@ package com.blackrock.terrain;
 
 import com.blackrock.terrain.dto.RootConfig;
 import com.blackrock.terrain.dto.StorageAccountDto;
+import com.blackrock.terrain.exception.ConfigurationLoadException;
 import com.blackrock.terrain.exception.TerraformRepoInitializationException;
 import com.blackrock.terrain.service.YamlParserService;
 import org.junit.jupiter.api.DisplayName;
@@ -86,7 +87,7 @@ class YamlParserServiceTest {
     }
 
     @Test
-    @DisplayName("Throw TerraformRepoInitializationException when storage account ID is missing or blank")
+    @DisplayName("Throw ConfigurationLoadException when storage account ID is missing or blank")
     void testThrowExceptionWhenStorageAccountIdIsMissing() {
         String invalidYaml = """
                 storage_accounts:
@@ -96,7 +97,7 @@ class YamlParserServiceTest {
 
         InputStream is = new java.io.ByteArrayInputStream(invalidYaml.getBytes());
         assertThatThrownBy(() -> yamlParserService.parseYamlStream(is))
-                .isInstanceOf(TerraformRepoInitializationException.class)
+                .isInstanceOf(ConfigurationLoadException.class)
                 .hasMessageContaining("Mandatory attribute 'id' is missing or blank for storage account 'invalid_sa'");
     }
 }

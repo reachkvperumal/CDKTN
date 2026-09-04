@@ -17,6 +17,7 @@ import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 
+import com.blackrock.terrain.exception.ConfigurationLoadException;
 import com.blackrock.terrain.exception.TerraformRepoInitializationException;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -157,7 +158,7 @@ class TerraformGeneratorServiceTest {
     }
 
     @Test
-    @DisplayName("Throw TerraformRepoInitializationException when synthesizing storage account with missing ID")
+    @DisplayName("Throw ConfigurationLoadException when synthesizing storage account with missing ID")
     void testThrowExceptionOnMissingIdInGenerator() {
         StorageAccountDto saDto = StorageAccountDto.builder()
                 .tribe("test_tribe")
@@ -168,7 +169,7 @@ class TerraformGeneratorServiceTest {
                 .build();
 
         assertThatThrownBy(() -> terraformGeneratorService.generateTerraformJson(rootConfig, "InvalidStack", "target/cdktf_invalid"))
-                .isInstanceOf(TerraformRepoInitializationException.class)
+                .isInstanceOf(ConfigurationLoadException.class)
                 .hasMessageContaining("Mandatory attribute 'id' is missing or blank for storage account 'sa_no_id'");
     }
 }
