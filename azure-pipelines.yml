@@ -1,0 +1,57 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - src/*
+      - pom.xml
+      - '*.yaml'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  JAVA_VERSION: '17'
+  NODE_VERSION: '20.x'
+
+steps:
+  - task: JavaToolInstaller@0
+    inputs:
+      versionSpec: '$(JAVA_VERSION)'
+      jdkArchitectureOption: 'x64'
+      jdkSourceOption: 'PreInstalled'
+    displayName: 'Set up Java JDK $(JAVA_VERSION)'
+
+  - task: UseNode@1
+    inputs:
+      versionSpec: '$(NODE_VERSION)'
+    displayName: 'Set up Node.js (Required for CDKTN JSII Runtime)'
+
+  - task: Maven@4
+    inputs:
+      mavenPomFile: 'pom.xml'
+      goals: 'clean package'
+      options: '-DskipTests=false'
+      publishJUnitResults: true
+      testResultsFiles: '**/surefire-reports/TEST-*.xml'
+    displayName: 'Build Spring Boot Application'
+
+  - script: |
+      echo "=== Running CDKTN Terraform Generator ==="
+      # Copy target pipeline YAML input to source.yaml if provided dynamically
+      if [ -f "$(INPUT_YAML_PATH)" ]; then
+        cp "$(INPUT_YAML_PATH)" source.yaml
+      fi
+
+      java -jar target/cdktn-terraform-generator-1.0.0-SNAPSHOT.jar
+    displayName: 'Execute CDKTN Generator'
+    env:
+      JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION: '1'
+
+  - task: PublishPipelineArtifact@1
+    inputs:
+      targetPath: '$(System.DefaultWorkingDirectory)/cdktf.out'
+      artifact: 'terraform-json-output'
+      publishLocation: 'pipeline'
+    displayName: 'Publish Synthesized Terraform JSON'
