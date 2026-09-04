@@ -148,21 +148,7 @@ steps:
 
 ## Azure DevOps Execution Architecture & Environment Variables
 
-```mermaid
-flowchart TD
-    A["Azure DevOps Pipeline Variable:<br/>INPUT_YAML_PATH = 'configs/prod.yaml'"] --> B["Shell Script: cp 'configs/prod.yaml' source.yaml"]
-    B --> C["Java Runtime:<br/>java -jar cdktn-terraform-generator.jar"]
-    C --> D["YamlParserService:<br/>Reads source.yaml"]
-    D --> E["TerraformGeneratorService & JSII Bridge"]
-    
-    subgraph Environment Variables ["Environment Setup (env)"]
-        F["NODE_OPTIONS='--max-old-space-size=8192'<br/>(Allocates 8GB Heap for Node.js JSII process)"]
-        G["JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION='1'<br/>(Suppresses Node version warning banner)"]
-    end
-    
-    E -->|Uses Env Vars| H["Node.js V8 Engine (JSII Sub-process)"]
-    H --> I["Synthesized cdk.tf.json Output"]
-```
+![Azure DevOps Execution Architecture](docs/images/azure_pipeline_execution_architecture.png)
 
 ### Detailed Breakdown
 
