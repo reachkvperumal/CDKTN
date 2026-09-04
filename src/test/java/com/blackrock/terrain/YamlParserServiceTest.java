@@ -10,7 +10,10 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -55,4 +58,19 @@ class YamlParserServiceTest {
         assertThat(accountingSa.getTags()).containsEntry("blk-business-unit", "1Aladdin");
         assertThat(accountingSa.getContainers()).containsKey("accounting-data");
     }
+
+    @Test
+    @DisplayName("Stream large YAML document via Jackson streaming parser")
+    void testStreamLargeYaml() throws IOException {
+        File file = new File("source2.yaml");
+        assertThat(file).exists();
+
+        try (InputStream is = new FileInputStream(file)) {
+            Map<String, StorageAccountDto> accountsMap = yamlParserService.streamLargeYaml(is);
+            assertThat(accountsMap).isNotNull();
+            assertThat(accountsMap).containsKeys("accounting", "adax_doc_grok");
+            assertThat(accountsMap.get("accounting").getId()).isEqualTo("accnt");
+        }
+    }
 }
+

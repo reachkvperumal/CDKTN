@@ -15,12 +15,19 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @Slf4j
 @Service
 public class TerraformGeneratorService {
+
+    private static final int PARTITION_SIZE = 500;
+    private final ExecutorService executor = Executors.newFixedThreadPool(
+            Math.max(2, Runtime.getRuntime().availableProcessors())
+    );
 
     public String generateTerraformJson(RootConfig rootConfig, String stackName, String outputDirectory) throws IOException {
         File outDir = new File(outputDirectory);
@@ -50,6 +57,57 @@ public class TerraformGeneratorService {
             log.warn("Synthesized file not found at expected path {}, searching in outdir...", synthesizedFile);
             return "{}";
         }
+    }
+
+    /**
+     * Optimized parallel partitioned stack generation for large constructs (10K+ lines YAML).
+     */
+    public List<String> generateLargeScaleTerraformJson(Map<String, StorageAccountDto> allAccounts, String baseOutputDir) {
+        log.info("Starting large-scale multi-partition synthesis for {} storage account resources...", allAccounts.size());
+        List<Map.Entry<String, StorageAccountDto>> entries = new ArrayList<>(allAccounts.entrySet());
+        List<List<Map.Entry<String, StorageAccountDto>>> partitions = partition(entries, PARTITION_SIZE);
+
+        List<CompletableFuture<String>> futures = new ArrayList<>();
+
+        for (int i = 0; i < partitions.size(); i++) {
+            final int partitionIdx = i;
+            final List<Map.Entry<String, StorageAccountDto>> chunk = partitions.get(i);
+
+            CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
+                String stackName = "PartitionStack_" + partitionIdx;
+                String partitionOutDirStr = baseOutputDir + "/partition_" + partitionIdx;
+                File outDir = new File(partitionOutDirStr);
+                if (!outDir.exists()) {
+                    outDir.mkdirs();
+                }
+
+                App app = new App(AppConfig.builder().outdir(outDir.getAbsolutePath()).build());
+                TerraformStack stack = new TerraformStack(app, stackName);
+
+                for (Map.Entry<String, StorageAccountDto> entry : chunk) {
+                    buildStorageAccountResource(stack, entry.getKey(), entry.getValue());
+                }
+
+                app.synth();
+                log.info("Partition stack {} with {} resources synthesized successfully.", stackName, chunk.size());
+
+                Path jsonPath = Path.of(outDir.getAbsolutePath(), "stacks", stackName, "cdk.tf.json");
+                try {
+                    return Files.exists(jsonPath) ? Files.readString(jsonPath) : "{}";
+                } catch (IOException e) {
+                    log.error("Failed to read synthesized JSON for stack {}", stackName, e);
+                    return "{}";
+                }
+            }, executor);
+
+            futures.add(future);
+        }
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        return futures.stream()
+                .map(CompletableFuture::join)
+                .toList();
     }
 
     private void buildStorageAccountResource(TerraformStack stack, String accountName, StorageAccountDto accountDto) {
@@ -91,4 +149,13 @@ public class TerraformGeneratorService {
 
         containerAttrs.forEach(containerResource::addOverride);
     }
+
+    private <T> List<List<T>> partition(List<T> list, int size) {
+        List<List<T>> partitions = new ArrayList<>();
+        for (int i = 0; i < list.size(); i += size) {
+            partitions.add(list.subList(i, Math.min(i + size, list.size())));
+        }
+        return partitions;
+    }
 }
+

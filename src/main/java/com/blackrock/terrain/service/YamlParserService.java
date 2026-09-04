@@ -2,8 +2,11 @@ package com.blackrock.terrain.service;
 
 import com.blackrock.terrain.dto.RootConfig;
 import com.blackrock.terrain.dto.StorageAccountDto;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.fasterxml.jackson.dataformat.yaml.YAMLParser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -69,4 +72,54 @@ public class YamlParserService {
 
         return new RootConfig();
     }
+
+    /**
+     * High-throughput streaming parser for large (10K+ line) YAML input documents.
+     */
+    public Map<String, StorageAccountDto> streamLargeYaml(InputStream inputStream) throws IOException {
+        log.info("Starting high-throughput streaming YAML parse...");
+        Map<String, StorageAccountDto> result = new HashMap<>();
+        YAMLFactory yamlFactory = YAMLFactory.builder().build();
+
+        try (YAMLParser parser = (YAMLParser) yamlFactory.createParser(inputStream)) {
+            while (parser.nextToken() != null) {
+                if (parser.currentToken() == JsonToken.FIELD_NAME) {
+                    String fieldName = parser.currentName();
+                    if ("storage_accounts".equals(fieldName)) {
+                        parser.nextToken(); // Move to START_OBJECT of storage_accounts
+                        if (parser.currentToken() == JsonToken.START_OBJECT) {
+                            while (parser.nextToken() == JsonToken.FIELD_NAME) {
+                                String saName = parser.currentName();
+                                parser.nextToken(); // Move to value token
+                                StorageAccountDto dto = yamlObjectMapper.readValue(parser, StorageAccountDto.class);
+                                if (dto != null) {
+                                    result.put(saName, dto);
+                                }
+                            }
+                        }
+                    } else if (fieldName != null && !fieldName.startsWith(".")
+                            && !fieldName.equals("defaults")
+                            && !fieldName.equals("environments")
+                            && !fieldName.equals("budget_defaults")
+                            && !fieldName.equals("storage_account_defaults")) {
+                        parser.nextToken();
+                        if (parser.currentToken() == JsonToken.START_OBJECT) {
+                            try {
+                                StorageAccountDto dto = yamlObjectMapper.readValue(parser, StorageAccountDto.class);
+                                if (dto != null && (dto.getId() != null || dto.getTribe() != null || dto.getContainers() != null)) {
+                                    result.put(fieldName, dto);
+                                }
+                            } catch (Exception e) {
+                                log.debug("Skipping non-storage account property token: {}", fieldName);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        log.info("Streaming YAML parse completed. Extracted {} entries.", result.size());
+        return result;
+    }
+
 }
+
