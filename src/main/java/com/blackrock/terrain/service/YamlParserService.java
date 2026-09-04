@@ -26,6 +26,13 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class YamlParserService {
 
+    private static final String KEY_STORAGE_ACCOUNTS = "storage_accounts";
+    private static final String KEY_DEFAULTS = "defaults";
+    private static final String KEY_ENVIRONMENTS = "environments";
+    private static final String KEY_BUDGET_DEFAULTS = "budget_defaults";
+    private static final String KEY_STORAGE_ACCOUNT_DEFAULTS = "storage_account_defaults";
+    private static final String PREFIX_DOT = ".";
+
     private final ObjectMapper yamlObjectMapper;
 
     public RootConfig parseYamlFile(File file) throws IOException {
@@ -45,7 +52,7 @@ public class YamlParserService {
         }
 
         if (loadedYaml instanceof Map<?, ?> rawMap) {
-            if (rawMap.containsKey("storage_accounts")) {
+            if (rawMap.containsKey(KEY_STORAGE_ACCOUNTS)) {
                 log.info("Parsing standard root schema with 'storage_accounts' block...");
                 return yamlObjectMapper.convertValue(rawMap, RootConfig.class);
             } else {
@@ -58,7 +65,7 @@ public class YamlParserService {
                 Map<String, StorageAccountDto> filteredAccounts = new HashMap<>();
                 if (storageAccounts != null) {
                     storageAccounts.forEach((key, val) -> {
-                        if (!key.startsWith(".") && !key.equals("defaults") && !key.equals("environments")) {
+                        if (!key.startsWith(PREFIX_DOT) && !key.equals(KEY_DEFAULTS) && !key.equals(KEY_ENVIRONMENTS)) {
                             filteredAccounts.put(key, val);
                         }
                     });
@@ -85,7 +92,7 @@ public class YamlParserService {
             while (parser.nextToken() != null) {
                 if (parser.currentToken() == JsonToken.FIELD_NAME) {
                     String fieldName = parser.currentName();
-                    if ("storage_accounts".equals(fieldName)) {
+                    if (KEY_STORAGE_ACCOUNTS.equals(fieldName)) {
                         parser.nextToken(); // Move to START_OBJECT of storage_accounts
                         if (parser.currentToken() == JsonToken.START_OBJECT) {
                             while (parser.nextToken() == JsonToken.FIELD_NAME) {
@@ -97,11 +104,11 @@ public class YamlParserService {
                                 }
                             }
                         }
-                    } else if (fieldName != null && !fieldName.startsWith(".")
-                            && !fieldName.equals("defaults")
-                            && !fieldName.equals("environments")
-                            && !fieldName.equals("budget_defaults")
-                            && !fieldName.equals("storage_account_defaults")) {
+                    } else if (fieldName != null && !fieldName.startsWith(PREFIX_DOT)
+                            && !fieldName.equals(KEY_DEFAULTS)
+                            && !fieldName.equals(KEY_ENVIRONMENTS)
+                            && !fieldName.equals(KEY_BUDGET_DEFAULTS)
+                            && !fieldName.equals(KEY_STORAGE_ACCOUNT_DEFAULTS)) {
                         parser.nextToken();
                         if (parser.currentToken() == JsonToken.START_OBJECT) {
                             try {
@@ -120,6 +127,6 @@ public class YamlParserService {
         log.info("Streaming YAML parse completed. Extracted {} entries.", result.size());
         return result;
     }
-
 }
+
 

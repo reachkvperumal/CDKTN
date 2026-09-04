@@ -29,6 +29,37 @@ import java.util.concurrent.Executors;
 @RequiredArgsConstructor
 public class TerraformGeneratorService {
 
+    private static final String RESOURCE_TYPE_STORAGE_ACCOUNT = "azurerm_storage_account";
+    private static final String RESOURCE_TYPE_STORAGE_CONTAINER = "azurerm_storage_container";
+
+    private static final String ATTR_NAME = "name";
+    private static final String ATTR_ACCOUNT_ID = "account_id";
+    private static final String ATTR_TRIBE = "tribe";
+    private static final String ATTR_ACCOUNT_TIER = "account_tier";
+    private static final String ATTR_ACCOUNT_REPLICATION_TYPE = "account_replication_type";
+    private static final String ATTR_ACCESS_TIER = "access_tier";
+    private static final String ATTR_TAGS = "tags";
+    private static final String ATTR_AZURE_DATA_LAKE_STORAGE_PROPERTIES = "azure_data_lake_storage_properties";
+    private static final String ATTR_SNOWFLAKE_ENVIRONMENTS = "snowflake_environments";
+    private static final String ATTR_STORAGE_ACCOUNT_RELEASERS = "storage_account_releasers";
+    private static final String ATTR_STORAGE_ACCOUNT_OWNERS = "storage_account_owners";
+
+    private static final String ATTR_STORAGE_ACCOUNT_NAME = "storage_account_name";
+    private static final String ATTR_REPLICATION = "replication";
+    private static final String ATTR_CONTAINER_OWNERS = "container_owners";
+    private static final String ATTR_ENVIRONMENTS = "environments";
+    private static final String ATTR_LIFECYCLE_MANAGEMENT = "lifecycle_management";
+
+    private static final String KEY_RESOURCE = "resource";
+    private static final String STACKS_DIR = "stacks";
+    private static final String CDK_TF_JSON = "cdk.tf.json";
+    private static final String EMPTY_JSON = "{}";
+    private static final String PREFIX_SA_RESOURCE = "sa_";
+    private static final String PREFIX_CONTAINER_RESOURCE = "container_";
+    private static final String PARTITION_STACK_PREFIX = "PartitionStack_";
+    private static final String PARTITION_DIR_PREFIX = "/partition_";
+    private static final String EMPTY_OVERRIDE_PATH = "";
+
     private final ObjectMapper objectMapper;
 
     private static final int PARTITION_SIZE = 500;
@@ -57,12 +88,12 @@ public class TerraformGeneratorService {
         app.synth();
         log.info("CDK-Terrain Stack synthesized successfully for stack: {}", stackName);
 
-        Path synthesizedFile = Path.of(outDir.getAbsolutePath(), "stacks", stackName, "cdk.tf.json");
+        Path synthesizedFile = Path.of(outDir.getAbsolutePath(), STACKS_DIR, stackName, CDK_TF_JSON);
         if (Files.exists(synthesizedFile)) {
             return Files.readString(synthesizedFile);
         } else {
             log.warn("Synthesized file not found at expected path {}, searching in outdir...", synthesizedFile);
-            return "{}";
+            return EMPTY_JSON;
         }
     }
 
@@ -80,10 +111,10 @@ public class TerraformGeneratorService {
      * updating matching resource blocks and inserting new ones.
      */
     public String upsertTerraformJson(String existingJson, String newJson) throws IOException {
-        if (existingJson == null || existingJson.isBlank() || "{}".equals(existingJson.trim())) {
+        if (existingJson == null || existingJson.isBlank() || EMPTY_JSON.equals(existingJson.trim())) {
             return newJson;
         }
-        if (newJson == null || newJson.isBlank() || "{}".equals(newJson.trim())) {
+        if (newJson == null || newJson.isBlank() || EMPTY_JSON.equals(newJson.trim())) {
             return existingJson;
         }
 
@@ -95,13 +126,13 @@ public class TerraformGeneratorService {
         }
 
         // Upsert 'resource' block
-        if (newObj.has("resource") && newObj.get("resource").isObject()) {
-            ObjectNode newResourceNode = (ObjectNode) newObj.get("resource");
+        if (newObj.has(KEY_RESOURCE) && newObj.get(KEY_RESOURCE).isObject()) {
+            ObjectNode newResourceNode = (ObjectNode) newObj.get(KEY_RESOURCE);
             ObjectNode existingResourceNode;
-            if (existingObj.has("resource") && existingObj.get("resource").isObject()) {
-                existingResourceNode = (ObjectNode) existingObj.get("resource");
+            if (existingObj.has(KEY_RESOURCE) && existingObj.get(KEY_RESOURCE).isObject()) {
+                existingResourceNode = (ObjectNode) existingObj.get(KEY_RESOURCE);
             } else {
-                existingResourceNode = existingObj.putObject("resource");
+                existingResourceNode = existingObj.putObject(KEY_RESOURCE);
             }
 
             newResourceNode.fieldNames().forEachRemaining(resourceType -> {
@@ -158,8 +189,8 @@ public class TerraformGeneratorService {
             final List<Map.Entry<String, StorageAccountDto>> chunk = partitions.get(i);
 
             CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
-                String stackName = "PartitionStack_" + partitionIdx;
-                String partitionOutDirStr = baseOutputDir + "/partition_" + partitionIdx;
+                String stackName = PARTITION_STACK_PREFIX + partitionIdx;
+                String partitionOutDirStr = baseOutputDir + PARTITION_DIR_PREFIX + partitionIdx;
                 File outDir = new File(partitionOutDirStr);
                 if (!outDir.exists()) {
                     outDir.mkdirs();
@@ -175,12 +206,12 @@ public class TerraformGeneratorService {
                 app.synth();
                 log.info("Partition stack {} with {} resources synthesized successfully.", stackName, chunk.size());
 
-                Path jsonPath = Path.of(outDir.getAbsolutePath(), "stacks", stackName, "cdk.tf.json");
+                Path jsonPath = Path.of(outDir.getAbsolutePath(), STACKS_DIR, stackName, CDK_TF_JSON);
                 try {
-                    return Files.exists(jsonPath) ? Files.readString(jsonPath) : "{}";
+                    return Files.exists(jsonPath) ? Files.readString(jsonPath) : EMPTY_JSON;
                 } catch (IOException e) {
                     log.error("Failed to read synthesized JSON for stack {}", stackName, e);
-                    return "{}";
+                    return EMPTY_JSON;
                 }
             }, executor);
 
@@ -196,31 +227,31 @@ public class TerraformGeneratorService {
 
     private void buildStorageAccountResource(TerraformStack stack, String accountName, StorageAccountDto accountDto) {
         Map<String, Object> saAttributes = new HashMap<>();
-        saAttributes.put("name", accountName);
-        if (accountDto.getId() != null) saAttributes.put("account_id", accountDto.getId());
-        if (accountDto.getTribe() != null) saAttributes.put("tribe", accountDto.getTribe());
-        if (accountDto.getPerformance() != null) saAttributes.put("account_tier", accountDto.getPerformance());
-        if (accountDto.getRedundancy() != null) saAttributes.put("account_replication_type", accountDto.getRedundancy());
-        if (accountDto.getAccessTier() != null) saAttributes.put("access_tier", accountDto.getAccessTier());
-        
+        saAttributes.put(ATTR_NAME, accountName);
+        if (accountDto.getId() != null) saAttributes.put(ATTR_ACCOUNT_ID, accountDto.getId());
+        if (accountDto.getTribe() != null) saAttributes.put(ATTR_TRIBE, accountDto.getTribe());
+        if (accountDto.getPerformance() != null) saAttributes.put(ATTR_ACCOUNT_TIER, accountDto.getPerformance());
+        if (accountDto.getRedundancy() != null) saAttributes.put(ATTR_ACCOUNT_REPLICATION_TYPE, accountDto.getRedundancy());
+        if (accountDto.getAccessTier() != null) saAttributes.put(ATTR_ACCESS_TIER, accountDto.getAccessTier());
+
         if (isNonEmpty(accountDto.getTags())) {
-            saAttributes.put("tags", accountDto.getTags());
+            saAttributes.put(ATTR_TAGS, accountDto.getTags());
         }
         if (isNonEmpty(accountDto.getAzureDataLakeStorageProperties())) {
-            saAttributes.put("azure_data_lake_storage_properties", accountDto.getAzureDataLakeStorageProperties());
+            saAttributes.put(ATTR_AZURE_DATA_LAKE_STORAGE_PROPERTIES, accountDto.getAzureDataLakeStorageProperties());
         }
         if (isNonEmpty(accountDto.getSnowflakeEnvironments())) {
-            saAttributes.put("snowflake_environments", accountDto.getSnowflakeEnvironments());
+            saAttributes.put(ATTR_SNOWFLAKE_ENVIRONMENTS, accountDto.getSnowflakeEnvironments());
         }
         if (isNonEmpty(accountDto.getStorageAccountReleasers())) {
-            saAttributes.put("storage_account_releasers", accountDto.getStorageAccountReleasers());
+            saAttributes.put(ATTR_STORAGE_ACCOUNT_RELEASERS, accountDto.getStorageAccountReleasers());
         }
         if (isNonEmpty(accountDto.getStorageAccountOwners())) {
-            saAttributes.put("storage_account_owners", accountDto.getStorageAccountOwners());
+            saAttributes.put(ATTR_STORAGE_ACCOUNT_OWNERS, accountDto.getStorageAccountOwners());
         }
 
-        TerraformResource saResource = new TerraformResource(stack, "sa_" + accountName, TerraformResourceConfig.builder()
-                .terraformResourceType("azurerm_storage_account")
+        TerraformResource saResource = new TerraformResource(stack, PREFIX_SA_RESOURCE + accountName, TerraformResourceConfig.builder()
+                .terraformResourceType(RESOURCE_TYPE_STORAGE_ACCOUNT)
                 .build());
 
         saAttributes.forEach(saResource::addOverride);
@@ -234,24 +265,24 @@ public class TerraformGeneratorService {
 
     private void buildContainerResource(TerraformStack stack, String saName, String containerName, ContainerDto containerDto) {
         Map<String, Object> containerAttrs = new HashMap<>();
-        containerAttrs.put("name", containerName);
-        containerAttrs.put("storage_account_name", saName);
-        if (containerDto.getReplication() != null) containerAttrs.put("replication", containerDto.getReplication());
-        
+        containerAttrs.put(ATTR_NAME, containerName);
+        containerAttrs.put(ATTR_STORAGE_ACCOUNT_NAME, saName);
+        if (containerDto.getReplication() != null) containerAttrs.put(ATTR_REPLICATION, containerDto.getReplication());
+
         if (isNonEmpty(containerDto.getContainerOwners())) {
-            containerAttrs.put("container_owners", containerDto.getContainerOwners());
+            containerAttrs.put(ATTR_CONTAINER_OWNERS, containerDto.getContainerOwners());
         }
         if (isNonEmpty(containerDto.getEnvironments())) {
-            containerAttrs.put("environments", containerDto.getEnvironments());
+            containerAttrs.put(ATTR_ENVIRONMENTS, containerDto.getEnvironments());
         }
         if (isNonEmpty(containerDto.getLifecycleManagement())) {
-            containerAttrs.put("lifecycle_management", containerDto.getLifecycleManagement());
+            containerAttrs.put(ATTR_LIFECYCLE_MANAGEMENT, containerDto.getLifecycleManagement());
         }
 
-        String safeResourceName = ("container_" + saName + "_" + containerName).replaceAll("[^a-zA-Z0-9_]", "_");
+        String safeResourceName = (PREFIX_CONTAINER_RESOURCE + saName + "_" + containerName).replaceAll("[^a-zA-Z0-9_]", "_");
         TerraformResource containerResource = new TerraformResource(stack, safeResourceName,
                 TerraformResourceConfig.builder()
-                        .terraformResourceType("azurerm_storage_container")
+                        .terraformResourceType(RESOURCE_TYPE_STORAGE_CONTAINER)
                         .build());
 
         containerAttrs.forEach(containerResource::addOverride);
@@ -273,6 +304,7 @@ public class TerraformGeneratorService {
         return partitions;
     }
 }
+
 
 
 
