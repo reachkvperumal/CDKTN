@@ -3,11 +3,15 @@ package com.blackrock.terrain.service;
 import com.blackrock.terrain.dto.ContainerDto;
 import com.blackrock.terrain.dto.RootConfig;
 import com.blackrock.terrain.dto.StorageAccountDto;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.cdktn.cdktn.App;
 import io.cdktn.cdktn.AppConfig;
 import io.cdktn.cdktn.TerraformResource;
 import io.cdktn.cdktn.TerraformResourceConfig;
 import io.cdktn.cdktn.TerraformStack;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -22,7 +26,10 @@ import java.util.concurrent.Executors;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class TerraformGeneratorService {
+
+    private final ObjectMapper objectMapper;
 
     private static final int PARTITION_SIZE = 500;
     private final ExecutorService executor = Executors.newFixedThreadPool(
@@ -57,6 +64,83 @@ public class TerraformGeneratorService {
             log.warn("Synthesized file not found at expected path {}, searching in outdir...", synthesizedFile);
             return "{}";
         }
+    }
+
+    /**
+     * Synthesizes incoming YAML config into Terraform JSON and upserts/merges it with an existing Terraform JSON.
+     */
+    public String upsertYamlIntoTerraformJson(RootConfig rootConfig, String existingJson, String stackName, String outputDirectory) throws IOException {
+        String newlySynthesizedJson = generateTerraformJson(rootConfig, stackName, outputDirectory);
+        return upsertTerraformJson(existingJson, newlySynthesizedJson);
+    }
+
+    /**
+     * Merges/upserts newly synthesized Terraform JSON into an existing Terraform JSON structure.
+     * Preserves existing non-colliding resources, providers, and backend definitions, while
+     * updating matching resource blocks and inserting new ones.
+     */
+    public String upsertTerraformJson(String existingJson, String newJson) throws IOException {
+        if (existingJson == null || existingJson.isBlank() || "{}".equals(existingJson.trim())) {
+            return newJson;
+        }
+        if (newJson == null || newJson.isBlank() || "{}".equals(newJson.trim())) {
+            return existingJson;
+        }
+
+        JsonNode existingTree = objectMapper.readTree(existingJson);
+        JsonNode newTree = objectMapper.readTree(newJson);
+
+        if (!(existingTree instanceof ObjectNode existingObj) || !(newTree instanceof ObjectNode newObj)) {
+            return newJson;
+        }
+
+        // Upsert 'resource' block
+        if (newObj.has("resource") && newObj.get("resource").isObject()) {
+            ObjectNode newResourceNode = (ObjectNode) newObj.get("resource");
+            ObjectNode existingResourceNode;
+            if (existingObj.has("resource") && existingObj.get("resource").isObject()) {
+                existingResourceNode = (ObjectNode) existingObj.get("resource");
+            } else {
+                existingResourceNode = existingObj.putObject("resource");
+            }
+
+            newResourceNode.fieldNames().forEachRemaining(resourceType -> {
+                JsonNode newTypeBlock = newResourceNode.get(resourceType);
+                if (newTypeBlock.isObject()) {
+                    ObjectNode existingTypeBlock;
+                    if (existingResourceNode.has(resourceType) && existingResourceNode.get(resourceType).isObject()) {
+                        existingTypeBlock = (ObjectNode) existingResourceNode.get(resourceType);
+                    } else {
+                        existingTypeBlock = existingResourceNode.putObject(resourceType);
+                    }
+
+                    ObjectNode newInstances = (ObjectNode) newTypeBlock;
+                    newInstances.fieldNames().forEachRemaining(instanceName -> {
+                        JsonNode newInstanceValue = newInstances.get(instanceName);
+                        if (existingTypeBlock.has(instanceName) && existingTypeBlock.get(instanceName).isObject() && newInstanceValue.isObject()) {
+                            deepMerge((ObjectNode) existingTypeBlock.get(instanceName), (ObjectNode) newInstanceValue);
+                        } else {
+                            existingTypeBlock.set(instanceName, newInstanceValue.deepCopy());
+                        }
+                    });
+                }
+            });
+        }
+
+        return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(existingObj);
+    }
+
+    private void deepMerge(ObjectNode target, ObjectNode source) {
+        source.fieldNames().forEachRemaining(fieldName -> {
+            JsonNode sourceValue = source.get(fieldName);
+            JsonNode targetValue = target.get(fieldName);
+
+            if (targetValue != null && targetValue.isObject() && sourceValue.isObject()) {
+                deepMerge((ObjectNode) targetValue, (ObjectNode) sourceValue);
+            } else {
+                target.set(fieldName, sourceValue.deepCopy());
+            }
+        });
     }
 
     /**
@@ -158,4 +242,5 @@ public class TerraformGeneratorService {
         return partitions;
     }
 }
+
 

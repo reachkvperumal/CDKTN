@@ -59,5 +59,80 @@ class TerraformGeneratorServiceTest {
         assertThat(jsonOutputs).isNotEmpty();
         assertThat(jsonOutputs.get(0)).contains("azurerm_storage_account");
     }
+
+    @Test
+    @DisplayName("Upsert new resources into existing Terraform JSON structure")
+    void testUpsertTerraformJson() throws IOException {
+        String existingJson = """
+                {
+                  "terraform": {
+                    "backend": {
+                      "azurerm": { "resource_group_name": "rg-existing" }
+                    }
+                  },
+                  "resource": {
+                    "azurerm_storage_account": {
+                      "sa_existing": {
+                        "name": "existingaccount",
+                        "account_id": "old_id"
+                      }
+                    }
+                  }
+                }
+                """;
+
+        String incomingJson = """
+                {
+                  "resource": {
+                    "azurerm_storage_account": {
+                      "sa_existing": {
+                        "account_id": "updated_id",
+                        "tribe": "new_tribe"
+                      },
+                      "sa_new": {
+                        "name": "newaccount",
+                        "account_id": "new_id"
+                      }
+                    }
+                  }
+                }
+                """;
+
+        String resultJson = terraformGeneratorService.upsertTerraformJson(existingJson, incomingJson);
+
+        assertThat(resultJson).contains("rg-existing");
+        assertThat(resultJson).contains("sa_existing");
+        assertThat(resultJson).contains("updated_id");
+        assertThat(resultJson).contains("sa_new");
+        assertThat(resultJson).contains("newaccount");
+    }
+
+    @Test
+    @DisplayName("Upsert YAML DTOs directly into existing Terraform JSON")
+    void testUpsertYamlIntoTerraformJson() throws IOException {
+        File file = new File("source.yaml");
+        assertThat(file).exists();
+
+        RootConfig rootConfig = yamlParserService.parseYamlFile(file);
+
+        String existingJson = """
+                {
+                  "resource": {
+                    "azurerm_storage_account": {
+                      "sa_legacy": {
+                        "name": "legacy_account"
+                      }
+                    }
+                  }
+                }
+                """;
+
+        String upsertedJson = terraformGeneratorService.upsertYamlIntoTerraformJson(rootConfig, existingJson, "UpsertStack", "target/cdktf_upsert");
+
+        assertThat(upsertedJson).contains("sa_legacy");
+        assertThat(upsertedJson).contains("sa_adax_doc_grok");
+        assertThat(upsertedJson).contains("dgrok");
+    }
 }
+
 
