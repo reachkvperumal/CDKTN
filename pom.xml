@@ -19,7 +19,7 @@
 
     <properties>
         <java.version>17</java.version>
-        <cdktn.version>0.23.0</cdktn.version>
+        <cdktn.version>0.24.0</cdktn.version>
         <constructs.version>10.3.0</constructs.version>
     </properties>
 

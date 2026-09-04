@@ -17,12 +17,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import jakarta.annotation.PreDestroy;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -60,7 +62,6 @@ public class TerraformGeneratorService {
     private static final String PREFIX_CONTAINER_RESOURCE = "container_";
     private static final String PARTITION_STACK_PREFIX = "PartitionStack_";
     private static final String PARTITION_DIR_PREFIX = "/partition_";
-    private static final String EMPTY_OVERRIDE_PATH = "";
 
     private final ObjectMapper objectMapper;
 
@@ -241,9 +242,20 @@ public class TerraformGeneratorService {
 
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
-            return futures.stream()
-                    .map(CompletableFuture::join)
-                    .toList();
+            List<String> results = new ArrayList<>(futures.size());
+            for (CompletableFuture<String> future : futures) {
+                results.add(future.join());
+            }
+            return results;
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof ConfigurationLoadException cle) {
+                throw cle;
+            }
+            if (cause instanceof TerraformRepoInitializationException trie) {
+                throw trie;
+            }
+            throw new TerraformRepoInitializationException("Failed large-scale multi-partition Terraform JSON synthesis", cause);
         } catch (ConfigurationLoadException | TerraformRepoInitializationException e) {
             throw e;
         } catch (Exception e) {
@@ -337,6 +349,14 @@ public class TerraformGeneratorService {
             partitions.add(list.subList(i, Math.min(i + size, list.size())));
         }
         return partitions;
+    }
+
+    @PreDestroy
+    public void destroy() {
+        if (executor != null && !executor.isShutdown()) {
+            log.info("Shutting down TerraformGeneratorService executor thread pool...");
+            executor.shutdown();
+        }
     }
 }
 

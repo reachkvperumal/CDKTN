@@ -1,6 +1,6 @@
 # CDKTN Terraform Generator
 
-Spring Boot 3.3.3 / Java 17+ batch CLI service to deserialize YAML configurations into valid Terraform JSON (`cdk.tf.json`) using the **CDK-Terrain (cdktn 0.23.0)** Open Constructs SDK.
+Spring Boot 3.3.3 / Java 17+ batch CLI service to deserialize YAML configurations into valid Terraform JSON (`cdk.tf.json`) using the **CDK-Terrain (cdktn 0.24.0)** Open Constructs SDK.
 
 ---
 
