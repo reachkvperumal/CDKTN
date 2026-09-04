@@ -50,6 +50,7 @@ public class YamlParserService {
         try {
             LoaderOptions options = new LoaderOptions();
             options.setAllowDuplicateKeys(true);
+            options.setMaxAliasesForCollections(100_000);
             Yaml yaml = new Yaml(new SafeConstructor(options));
 
             Object loadedYaml = yaml.load(inputStream);
@@ -101,7 +102,7 @@ public class YamlParserService {
     public Map<String, StorageAccountDto> streamLargeYaml(InputStream inputStream) {
         log.info("Starting high-throughput streaming YAML parse...");
         Map<String, StorageAccountDto> result = new HashMap<>();
-        YAMLFactory yamlFactory = YAMLFactory.builder().build();
+        YAMLFactory yamlFactory = (YAMLFactory) yamlObjectMapper.getFactory();
 
         try (YAMLParser parser = (YAMLParser) yamlFactory.createParser(inputStream)) {
             while (parser.nextToken() != null) {

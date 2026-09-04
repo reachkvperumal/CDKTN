@@ -9,13 +9,20 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import org.yaml.snakeyaml.LoaderOptions;
+
 @Configuration
 public class YamlConfig {
 
     @Bean
     public ObjectMapper yamlObjectMapper() {
+        LoaderOptions loaderOptions = new LoaderOptions();
+        loaderOptions.setAllowDuplicateKeys(true);
+        loaderOptions.setMaxAliasesForCollections(100_000);
+
         YAMLFactory yamlFactory = YAMLFactory.builder()
                 .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
+                .loaderOptions(loaderOptions)
                 .build();
 
         return YAMLMapper.builder(yamlFactory)
