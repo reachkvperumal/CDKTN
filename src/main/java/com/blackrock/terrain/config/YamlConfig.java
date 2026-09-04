@@ -18,7 +18,8 @@ public class YamlConfig {
     public ObjectMapper yamlObjectMapper() {
         LoaderOptions loaderOptions = new LoaderOptions();
         loaderOptions.setAllowDuplicateKeys(true);
-        loaderOptions.setMaxAliasesForCollections(100_000);
+        loaderOptions.setMaxAliasesForCollections(Integer.MAX_VALUE);
+        loaderOptions.setCodePointLimit(100 * 1024 * 1024);
 
         YAMLFactory yamlFactory = YAMLFactory.builder()
                 .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)

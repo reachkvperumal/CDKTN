@@ -12,9 +12,11 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLParser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
+import org.yaml.snakeyaml.representer.Representer;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -50,8 +52,12 @@ public class YamlParserService {
         try {
             LoaderOptions options = new LoaderOptions();
             options.setAllowDuplicateKeys(true);
-            options.setMaxAliasesForCollections(100_000);
-            Yaml yaml = new Yaml(new SafeConstructor(options));
+            options.setMaxAliasesForCollections(Integer.MAX_VALUE);
+            options.setCodePointLimit(100 * 1024 * 1024);
+
+            DumperOptions dumperOptions = new DumperOptions();
+            Representer representer = new Representer(dumperOptions);
+            Yaml yaml = new Yaml(new SafeConstructor(options), representer, dumperOptions, options);
 
             Object loadedYaml = yaml.load(inputStream);
             if (loadedYaml == null) {

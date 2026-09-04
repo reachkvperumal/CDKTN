@@ -100,6 +100,23 @@ class YamlParserServiceTest {
                 .isInstanceOf(ConfigurationLoadException.class)
                 .hasMessageContaining("Mandatory attribute 'id' is missing or blank for storage account 'invalid_sa'");
     }
+
+    @Test
+    @DisplayName("Verify YAML document with >50 non-scalar node aliases parses without YAMLException")
+    void testMaxAliasesHandling() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(".template: &tpl_sa\n");
+        sb.append("  id: template_id\n");
+        sb.append("  tribe: template_tribe\n");
+        sb.append("storage_accounts:\n");
+        for (int i = 0; i < 500; i++) {
+            sb.append("  sa_alias_").append(i).append(": *tpl_sa\n");
+        }
+
+        InputStream is = new java.io.ByteArrayInputStream(sb.toString().getBytes());
+        RootConfig rootConfig = yamlParserService.parseYamlStream(is);
+        assertThat(rootConfig.getStorageAccounts()).hasSize(500);
+    }
 }
 
 
