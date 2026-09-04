@@ -52,11 +52,7 @@ class TerraformGeneratorServiceTest {
         File file = new File("source2.yaml");
         assertThat(file).exists();
 
-        Map<String, StorageAccountDto> accounts;
-        try (InputStream is = new FileInputStream(file)) {
-            accounts = yamlParserService.streamLargeYaml(is);
-        }
-
+        Map<String, StorageAccountDto> accounts = yamlParserService.parseYamlFile(file).getStorageAccounts();
         List<String> jsonOutputs = terraformGeneratorService.generateLargeScaleTerraformJson(accounts, "target/cdktf_partition_out");
 
         assertThat(jsonOutputs).isNotEmpty();
