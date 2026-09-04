@@ -124,8 +124,17 @@ steps:
   displayName: 'Build CDKTN Generator JAR'
 
 - script: |
-    java -jar target/cdktn-terraform-generator-1.0.0-SNAPSHOT.jar source.yaml ProductionStack ./output
-  displayName: 'Synthesize Terraform JSON from YAML'
+    echo "=== Running CDKTN Terraform Generator ==="
+    # Copy target pipeline YAML input to source.yaml if provided dynamically
+    if [ -f "$(INPUT_YAML_PATH)" ]; then
+      cp "$(INPUT_YAML_PATH)" source.yaml
+    fi
+
+    java -jar target/cdktn-terraform-generator-1.0.0-SNAPSHOT.jar
+  displayName: 'Execute CDKTN Generator'
+  env:
+    NODE_OPTIONS: '--max-old-space-size=8192'
+    JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION: '1'
 
 - task: PublishPipelineArtifact@1
   inputs:
@@ -137,9 +146,42 @@ steps:
 
 ---
 
+## Azure DevOps Execution Architecture & Environment Variables
+
+```mermaid
+flowchart TD
+    A["Azure DevOps Pipeline Variable:<br/>INPUT_YAML_PATH = 'configs/prod.yaml'"] --> B["Shell Script: cp 'configs/prod.yaml' source.yaml"]
+    B --> C["Java Runtime:<br/>java -jar cdktn-terraform-generator.jar"]
+    C --> D["YamlParserService:<br/>Reads source.yaml"]
+    D --> E["TerraformGeneratorService & JSII Bridge"]
+    
+    subgraph Environment Variables ["Environment Setup (env)"]
+        F["NODE_OPTIONS='--max-old-space-size=8192'<br/>(Allocates 8GB Heap for Node.js JSII process)"]
+        G["JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION='1'<br/>(Suppresses Node version warning banner)"]
+    end
+    
+    E -->|Uses Env Vars| H["Node.js V8 Engine (JSII Sub-process)"]
+    H --> I["Synthesized cdk.tf.json Output"]
+```
+
+### Detailed Breakdown
+
+1. **Dynamic Input Mapping (`cp "$(INPUT_YAML_PATH)" source.yaml`):**
+   - Maps dynamic pipeline input paths (e.g., `$(INPUT_YAML_PATH)`) to `source.yaml` in the working directory before executing the default Java application entry point.
+
+2. **`NODE_OPTIONS: '--max-old-space-size=8192'`:**
+   - CDK-Terrain (`cdktn`) bridges Java calls to an underlying Node.js V8 process via JSII.
+   - Setting `--max-old-space-size=8192` expands the Node.js V8 heap limit from default 2GB to **8GB**, ensuring large multi-partition constructs (10,000+ lines of YAML) synthesize without out-of-memory errors.
+
+3. **`JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION: '1'`:**
+   - Silences version warning banners produced when the pipeline runner uses a newer or non-LTS Node.js runtime, keeping CI/CD logs clean.
+
+---
+
 ## Running Unit Tests
 
 Execute test suite (11 unit tests covering validation, parsing, upserting, and parallel synthesis):
 ```bash
 mvn clean test
 ```
+
