@@ -97,6 +97,8 @@ public class TerraformGeneratorService {
                 log.warn("Synthesized file not found at expected path {}, searching in outdir...", synthesizedFile);
                 return EMPTY_JSON;
             }
+        } catch (TerraformRepoInitializationException e) {
+            throw e;
         } catch (Exception e) {
             throw new TerraformRepoInitializationException("Failed to generate Terraform JSON for stack: " + stackName, e);
         }
@@ -109,6 +111,8 @@ public class TerraformGeneratorService {
         try {
             String newlySynthesizedJson = generateTerraformJson(rootConfig, stackName, outputDirectory);
             return upsertTerraformJson(existingJson, newlySynthesizedJson);
+        } catch (TerraformRepoInitializationException e) {
+            throw e;
         } catch (Exception e) {
             throw new TerraformRepoInitializationException("Failed to upsert YAML into Terraform JSON", e);
         }
@@ -169,6 +173,8 @@ public class TerraformGeneratorService {
             }
 
             return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(existingObj);
+        } catch (TerraformRepoInitializationException e) {
+            throw e;
         } catch (Exception e) {
             throw new TerraformRepoInitializationException("Failed to upsert Terraform JSON AST structure", e);
         }
@@ -237,20 +243,30 @@ public class TerraformGeneratorService {
             return futures.stream()
                     .map(CompletableFuture::join)
                     .toList();
+        } catch (TerraformRepoInitializationException e) {
+            throw e;
         } catch (Exception e) {
             throw new TerraformRepoInitializationException("Failed large-scale multi-partition Terraform JSON synthesis", e);
         }
     }
 
 
+
     private void buildStorageAccountResource(TerraformStack stack, String accountName, StorageAccountDto accountDto) {
+        if (accountDto == null || accountDto.getId() == null || accountDto.getId().isBlank()) {
+            throw new TerraformRepoInitializationException(
+                    "Validation Error: Mandatory attribute 'id' is missing or blank for storage account '" + accountName + "'"
+            );
+        }
+
         Map<String, Object> saAttributes = new HashMap<>();
         saAttributes.put(ATTR_NAME, accountName);
-        if (accountDto.getId() != null) saAttributes.put(ATTR_ACCOUNT_ID, accountDto.getId());
+        saAttributes.put(ATTR_ACCOUNT_ID, accountDto.getId());
         if (accountDto.getTribe() != null) saAttributes.put(ATTR_TRIBE, accountDto.getTribe());
         if (accountDto.getPerformance() != null) saAttributes.put(ATTR_ACCOUNT_TIER, accountDto.getPerformance());
         if (accountDto.getRedundancy() != null) saAttributes.put(ATTR_ACCOUNT_REPLICATION_TYPE, accountDto.getRedundancy());
         if (accountDto.getAccessTier() != null) saAttributes.put(ATTR_ACCESS_TIER, accountDto.getAccessTier());
+
 
         if (isNonEmpty(accountDto.getTags())) {
             saAttributes.put(ATTR_TAGS, accountDto.getTags());

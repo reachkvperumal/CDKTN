@@ -17,7 +17,9 @@ import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 
+import com.blackrock.terrain.exception.TerraformRepoInitializationException;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -153,7 +155,24 @@ class TerraformGeneratorServiceTest {
         assertThat(synthesizedJson).doesNotContain("\"snowflake_environments\": []");
         assertThat(synthesizedJson).doesNotContain("\"storage_account_releasers\": []");
     }
+
+    @Test
+    @DisplayName("Throw TerraformRepoInitializationException when synthesizing storage account with missing ID")
+    void testThrowExceptionOnMissingIdInGenerator() {
+        StorageAccountDto saDto = StorageAccountDto.builder()
+                .tribe("test_tribe")
+                .build(); // id is missing/null
+
+        RootConfig rootConfig = RootConfig.builder()
+                .storageAccounts(Map.of("sa_no_id", saDto))
+                .build();
+
+        assertThatThrownBy(() -> terraformGeneratorService.generateTerraformJson(rootConfig, "InvalidStack", "target/cdktf_invalid"))
+                .isInstanceOf(TerraformRepoInitializationException.class)
+                .hasMessageContaining("Mandatory attribute 'id' is missing or blank for storage account 'sa_no_id'");
+    }
 }
+
 
 
 

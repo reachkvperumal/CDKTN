@@ -84,6 +84,22 @@ class YamlParserServiceTest {
                 .isInstanceOf(TerraformRepoInitializationException.class)
                 .hasMessageContaining("Failed to parse YAML file");
     }
+
+    @Test
+    @DisplayName("Throw TerraformRepoInitializationException when storage account ID is missing or blank")
+    void testThrowExceptionWhenStorageAccountIdIsMissing() {
+        String invalidYaml = """
+                storage_accounts:
+                  invalid_sa:
+                    tribe: test_tribe
+                """;
+
+        InputStream is = new java.io.ByteArrayInputStream(invalidYaml.getBytes());
+        assertThatThrownBy(() -> yamlParserService.parseYamlStream(is))
+                .isInstanceOf(TerraformRepoInitializationException.class)
+                .hasMessageContaining("Mandatory attribute 'id' is missing or blank for storage account 'invalid_sa'");
+    }
 }
+
 
 

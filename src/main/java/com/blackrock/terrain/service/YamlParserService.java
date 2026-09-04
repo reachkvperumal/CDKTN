@@ -54,10 +54,11 @@ public class YamlParserService {
                 return new RootConfig();
             }
 
+            RootConfig rootConfig;
             if (loadedYaml instanceof Map<?, ?> rawMap) {
                 if (rawMap.containsKey(KEY_STORAGE_ACCOUNTS)) {
                     log.info("Parsing standard root schema with 'storage_accounts' block...");
-                    return yamlObjectMapper.convertValue(rawMap, RootConfig.class);
+                    rootConfig = yamlObjectMapper.convertValue(rawMap, RootConfig.class);
                 } else {
                     log.info("Parsing direct storage account map schema...");
                     Map<String, StorageAccountDto> storageAccounts = yamlObjectMapper.convertValue(
@@ -74,13 +75,18 @@ public class YamlParserService {
                         });
                     }
 
-                    return RootConfig.builder()
+                    rootConfig = RootConfig.builder()
                             .storageAccounts(filteredAccounts)
                             .build();
                 }
+            } else {
+                rootConfig = new RootConfig();
             }
 
-            return new RootConfig();
+            validateStorageAccounts(rootConfig.getStorageAccounts());
+            return rootConfig;
+        } catch (TerraformRepoInitializationException e) {
+            throw e;
         } catch (Exception e) {
             throw new TerraformRepoInitializationException("Error occurred while parsing YAML stream", e);
         }
@@ -106,6 +112,7 @@ public class YamlParserService {
                                 parser.nextToken(); // Move to value token
                                 StorageAccountDto dto = yamlObjectMapper.readValue(parser, StorageAccountDto.class);
                                 if (dto != null) {
+                                    validateStorageAccountId(saName, dto);
                                     result.put(saName, dto);
                                 }
                             }
@@ -114,14 +121,19 @@ public class YamlParserService {
                             && !fieldName.equals(KEY_DEFAULTS)
                             && !fieldName.equals(KEY_ENVIRONMENTS)
                             && !fieldName.equals(KEY_BUDGET_DEFAULTS)
-                            && !fieldName.equals(KEY_STORAGE_ACCOUNT_DEFAULTS)) {
+                            && !fieldName.equals(KEY_STORAGE_ACCOUNT_DEFAULTS)
+                            && !fieldName.equals("azure_data_lake_storage_properties")
+                            && !fieldName.equals("tags")) {
                         parser.nextToken();
                         if (parser.currentToken() == JsonToken.START_OBJECT) {
                             try {
                                 StorageAccountDto dto = yamlObjectMapper.readValue(parser, StorageAccountDto.class);
-                                if (dto != null && (dto.getId() != null || dto.getTribe() != null || dto.getContainers() != null)) {
+                                if (dto != null && (dto.getId() != null || dto.getTribe() != null || (dto.getContainers() != null && !dto.getContainers().isEmpty()))) {
+                                    validateStorageAccountId(fieldName, dto);
                                     result.put(fieldName, dto);
                                 }
+                            } catch (TerraformRepoInitializationException e) {
+                                throw e;
                             } catch (Exception e) {
                                 log.debug("Skipping non-storage account property token: {}", fieldName);
                             }
@@ -131,10 +143,27 @@ public class YamlParserService {
             }
             log.info("Streaming YAML parse completed. Extracted {} entries.", result.size());
             return result;
+        } catch (TerraformRepoInitializationException e) {
+            throw e;
         } catch (Exception e) {
             throw new TerraformRepoInitializationException("Failed streaming YAML parsing", e);
         }
     }
+
+
+    private void validateStorageAccounts(Map<String, StorageAccountDto> storageAccounts) {
+        if (storageAccounts == null) return;
+        storageAccounts.forEach(this::validateStorageAccountId);
+    }
+
+    private void validateStorageAccountId(String accountName, StorageAccountDto dto) {
+        if (dto == null || dto.getId() == null || dto.getId().isBlank()) {
+            throw new TerraformRepoInitializationException(
+                    "Validation Error: Mandatory attribute 'id' is missing or blank for storage account '" + accountName + "'"
+            );
+        }
+    }
+
 }
 
 
