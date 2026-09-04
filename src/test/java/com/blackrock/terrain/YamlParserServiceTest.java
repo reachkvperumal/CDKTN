@@ -2,6 +2,7 @@ package com.blackrock.terrain;
 
 import com.blackrock.terrain.dto.RootConfig;
 import com.blackrock.terrain.dto.StorageAccountDto;
+import com.blackrock.terrain.exception.TerraformRepoInitializationException;
 import com.blackrock.terrain.service.YamlParserService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -16,6 +17,8 @@ import java.io.InputStream;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -72,5 +75,15 @@ class YamlParserServiceTest {
             assertThat(accountsMap.get("accounting").getId()).isEqualTo("accnt");
         }
     }
+
+    @Test
+    @DisplayName("Throw TerraformRepoInitializationException when file does not exist")
+    void testThrowTerraformRepoInitializationExceptionOnFileNotFound() {
+        File nonExistentFile = new File("non_existent_file.yaml");
+        assertThatThrownBy(() -> yamlParserService.parseYamlFile(nonExistentFile))
+                .isInstanceOf(TerraformRepoInitializationException.class)
+                .hasMessageContaining("Failed to parse YAML file");
+    }
 }
+
 

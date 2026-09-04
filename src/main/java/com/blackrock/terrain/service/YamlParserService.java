@@ -2,6 +2,7 @@ package com.blackrock.terrain.service;
 
 import com.blackrock.terrain.dto.RootConfig;
 import com.blackrock.terrain.dto.StorageAccountDto;
+import com.blackrock.terrain.exception.TerraformRepoInitializationException;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,7 +17,6 @@ import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
@@ -35,55 +35,61 @@ public class YamlParserService {
 
     private final ObjectMapper yamlObjectMapper;
 
-    public RootConfig parseYamlFile(File file) throws IOException {
+    public RootConfig parseYamlFile(File file) {
         try (InputStream is = new FileInputStream(file)) {
             return parseYamlStream(is);
+        } catch (Exception e) {
+            throw new TerraformRepoInitializationException("Failed to parse YAML file: " + (file != null ? file.getName() : "null"), e);
         }
     }
 
     public RootConfig parseYamlStream(InputStream inputStream) {
-        LoaderOptions options = new LoaderOptions();
-        options.setAllowDuplicateKeys(true);
-        Yaml yaml = new Yaml(new SafeConstructor(options));
+        try {
+            LoaderOptions options = new LoaderOptions();
+            options.setAllowDuplicateKeys(true);
+            Yaml yaml = new Yaml(new SafeConstructor(options));
 
-        Object loadedYaml = yaml.load(inputStream);
-        if (loadedYaml == null) {
-            return new RootConfig();
-        }
-
-        if (loadedYaml instanceof Map<?, ?> rawMap) {
-            if (rawMap.containsKey(KEY_STORAGE_ACCOUNTS)) {
-                log.info("Parsing standard root schema with 'storage_accounts' block...");
-                return yamlObjectMapper.convertValue(rawMap, RootConfig.class);
-            } else {
-                log.info("Parsing direct storage account map schema...");
-                Map<String, StorageAccountDto> storageAccounts = yamlObjectMapper.convertValue(
-                        rawMap,
-                        new TypeReference<Map<String, StorageAccountDto>>() {}
-                );
-
-                Map<String, StorageAccountDto> filteredAccounts = new HashMap<>();
-                if (storageAccounts != null) {
-                    storageAccounts.forEach((key, val) -> {
-                        if (!key.startsWith(PREFIX_DOT) && !key.equals(KEY_DEFAULTS) && !key.equals(KEY_ENVIRONMENTS)) {
-                            filteredAccounts.put(key, val);
-                        }
-                    });
-                }
-
-                return RootConfig.builder()
-                        .storageAccounts(filteredAccounts)
-                        .build();
+            Object loadedYaml = yaml.load(inputStream);
+            if (loadedYaml == null) {
+                return new RootConfig();
             }
-        }
 
-        return new RootConfig();
+            if (loadedYaml instanceof Map<?, ?> rawMap) {
+                if (rawMap.containsKey(KEY_STORAGE_ACCOUNTS)) {
+                    log.info("Parsing standard root schema with 'storage_accounts' block...");
+                    return yamlObjectMapper.convertValue(rawMap, RootConfig.class);
+                } else {
+                    log.info("Parsing direct storage account map schema...");
+                    Map<String, StorageAccountDto> storageAccounts = yamlObjectMapper.convertValue(
+                            rawMap,
+                            new TypeReference<Map<String, StorageAccountDto>>() {}
+                    );
+
+                    Map<String, StorageAccountDto> filteredAccounts = new HashMap<>();
+                    if (storageAccounts != null) {
+                        storageAccounts.forEach((key, val) -> {
+                            if (!key.startsWith(PREFIX_DOT) && !key.equals(KEY_DEFAULTS) && !key.equals(KEY_ENVIRONMENTS)) {
+                                filteredAccounts.put(key, val);
+                            }
+                        });
+                    }
+
+                    return RootConfig.builder()
+                            .storageAccounts(filteredAccounts)
+                            .build();
+                }
+            }
+
+            return new RootConfig();
+        } catch (Exception e) {
+            throw new TerraformRepoInitializationException("Error occurred while parsing YAML stream", e);
+        }
     }
 
     /**
      * High-throughput streaming parser for large (10K+ line) YAML input documents.
      */
-    public Map<String, StorageAccountDto> streamLargeYaml(InputStream inputStream) throws IOException {
+    public Map<String, StorageAccountDto> streamLargeYaml(InputStream inputStream) {
         log.info("Starting high-throughput streaming YAML parse...");
         Map<String, StorageAccountDto> result = new HashMap<>();
         YAMLFactory yamlFactory = YAMLFactory.builder().build();
@@ -123,10 +129,13 @@ public class YamlParserService {
                     }
                 }
             }
+            log.info("Streaming YAML parse completed. Extracted {} entries.", result.size());
+            return result;
+        } catch (Exception e) {
+            throw new TerraformRepoInitializationException("Failed streaming YAML parsing", e);
         }
-        log.info("Streaming YAML parse completed. Extracted {} entries.", result.size());
-        return result;
     }
 }
+
 
 

@@ -3,6 +3,7 @@ package com.blackrock.terrain.service;
 import com.blackrock.terrain.dto.ContainerDto;
 import com.blackrock.terrain.dto.RootConfig;
 import com.blackrock.terrain.dto.StorageAccountDto;
+import com.blackrock.terrain.exception.TerraformRepoInitializationException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -67,42 +68,50 @@ public class TerraformGeneratorService {
             Math.max(2, Runtime.getRuntime().availableProcessors())
     );
 
-    public String generateTerraformJson(RootConfig rootConfig, String stackName, String outputDirectory) throws IOException {
-        File outDir = new File(outputDirectory);
-        if (!outDir.exists()) {
-            outDir.mkdirs();
-        }
+    public String generateTerraformJson(RootConfig rootConfig, String stackName, String outputDirectory) {
+        try {
+            File outDir = new File(outputDirectory);
+            if (!outDir.exists()) {
+                outDir.mkdirs();
+            }
 
-        App app = new App(AppConfig.builder()
-                .outdir(outDir.getAbsolutePath())
-                .build());
+            App app = new App(AppConfig.builder()
+                    .outdir(outDir.getAbsolutePath())
+                    .build());
 
-        TerraformStack stack = new TerraformStack(app, stackName);
+            TerraformStack stack = new TerraformStack(app, stackName);
 
-        if (rootConfig.getStorageAccounts() != null) {
-            rootConfig.getStorageAccounts().forEach((accountName, accountDto) -> {
-                buildStorageAccountResource(stack, accountName, accountDto);
-            });
-        }
+            if (rootConfig != null && rootConfig.getStorageAccounts() != null) {
+                rootConfig.getStorageAccounts().forEach((accountName, accountDto) -> {
+                    buildStorageAccountResource(stack, accountName, accountDto);
+                });
+            }
 
-        app.synth();
-        log.info("CDK-Terrain Stack synthesized successfully for stack: {}", stackName);
+            app.synth();
+            log.info("CDK-Terrain Stack synthesized successfully for stack: {}", stackName);
 
-        Path synthesizedFile = Path.of(outDir.getAbsolutePath(), STACKS_DIR, stackName, CDK_TF_JSON);
-        if (Files.exists(synthesizedFile)) {
-            return Files.readString(synthesizedFile);
-        } else {
-            log.warn("Synthesized file not found at expected path {}, searching in outdir...", synthesizedFile);
-            return EMPTY_JSON;
+            Path synthesizedFile = Path.of(outDir.getAbsolutePath(), STACKS_DIR, stackName, CDK_TF_JSON);
+            if (Files.exists(synthesizedFile)) {
+                return Files.readString(synthesizedFile);
+            } else {
+                log.warn("Synthesized file not found at expected path {}, searching in outdir...", synthesizedFile);
+                return EMPTY_JSON;
+            }
+        } catch (Exception e) {
+            throw new TerraformRepoInitializationException("Failed to generate Terraform JSON for stack: " + stackName, e);
         }
     }
 
     /**
      * Synthesizes incoming YAML config into Terraform JSON and upserts/merges it with an existing Terraform JSON.
      */
-    public String upsertYamlIntoTerraformJson(RootConfig rootConfig, String existingJson, String stackName, String outputDirectory) throws IOException {
-        String newlySynthesizedJson = generateTerraformJson(rootConfig, stackName, outputDirectory);
-        return upsertTerraformJson(existingJson, newlySynthesizedJson);
+    public String upsertYamlIntoTerraformJson(RootConfig rootConfig, String existingJson, String stackName, String outputDirectory) {
+        try {
+            String newlySynthesizedJson = generateTerraformJson(rootConfig, stackName, outputDirectory);
+            return upsertTerraformJson(existingJson, newlySynthesizedJson);
+        } catch (Exception e) {
+            throw new TerraformRepoInitializationException("Failed to upsert YAML into Terraform JSON", e);
+        }
     }
 
     /**
@@ -110,55 +119,59 @@ public class TerraformGeneratorService {
      * Preserves existing non-colliding resources, providers, and backend definitions, while
      * updating matching resource blocks and inserting new ones.
      */
-    public String upsertTerraformJson(String existingJson, String newJson) throws IOException {
-        if (existingJson == null || existingJson.isBlank() || EMPTY_JSON.equals(existingJson.trim())) {
-            return newJson;
-        }
-        if (newJson == null || newJson.isBlank() || EMPTY_JSON.equals(newJson.trim())) {
-            return existingJson;
-        }
-
-        JsonNode existingTree = objectMapper.readTree(existingJson);
-        JsonNode newTree = objectMapper.readTree(newJson);
-
-        if (!(existingTree instanceof ObjectNode existingObj) || !(newTree instanceof ObjectNode newObj)) {
-            return newJson;
-        }
-
-        // Upsert 'resource' block
-        if (newObj.has(KEY_RESOURCE) && newObj.get(KEY_RESOURCE).isObject()) {
-            ObjectNode newResourceNode = (ObjectNode) newObj.get(KEY_RESOURCE);
-            ObjectNode existingResourceNode;
-            if (existingObj.has(KEY_RESOURCE) && existingObj.get(KEY_RESOURCE).isObject()) {
-                existingResourceNode = (ObjectNode) existingObj.get(KEY_RESOURCE);
-            } else {
-                existingResourceNode = existingObj.putObject(KEY_RESOURCE);
+    public String upsertTerraformJson(String existingJson, String newJson) {
+        try {
+            if (existingJson == null || existingJson.isBlank() || EMPTY_JSON.equals(existingJson.trim())) {
+                return newJson;
+            }
+            if (newJson == null || newJson.isBlank() || EMPTY_JSON.equals(newJson.trim())) {
+                return existingJson;
             }
 
-            newResourceNode.fieldNames().forEachRemaining(resourceType -> {
-                JsonNode newTypeBlock = newResourceNode.get(resourceType);
-                if (newTypeBlock.isObject()) {
-                    ObjectNode existingTypeBlock;
-                    if (existingResourceNode.has(resourceType) && existingResourceNode.get(resourceType).isObject()) {
-                        existingTypeBlock = (ObjectNode) existingResourceNode.get(resourceType);
-                    } else {
-                        existingTypeBlock = existingResourceNode.putObject(resourceType);
-                    }
+            JsonNode existingTree = objectMapper.readTree(existingJson);
+            JsonNode newTree = objectMapper.readTree(newJson);
 
-                    ObjectNode newInstances = (ObjectNode) newTypeBlock;
-                    newInstances.fieldNames().forEachRemaining(instanceName -> {
-                        JsonNode newInstanceValue = newInstances.get(instanceName);
-                        if (existingTypeBlock.has(instanceName) && existingTypeBlock.get(instanceName).isObject() && newInstanceValue.isObject()) {
-                            deepMerge((ObjectNode) existingTypeBlock.get(instanceName), (ObjectNode) newInstanceValue);
-                        } else {
-                            existingTypeBlock.set(instanceName, newInstanceValue.deepCopy());
-                        }
-                    });
+            if (!(existingTree instanceof ObjectNode existingObj) || !(newTree instanceof ObjectNode newObj)) {
+                return newJson;
+            }
+
+            // Upsert 'resource' block
+            if (newObj.has(KEY_RESOURCE) && newObj.get(KEY_RESOURCE).isObject()) {
+                ObjectNode newResourceNode = (ObjectNode) newObj.get(KEY_RESOURCE);
+                ObjectNode existingResourceNode;
+                if (existingObj.has(KEY_RESOURCE) && existingObj.get(KEY_RESOURCE).isObject()) {
+                    existingResourceNode = (ObjectNode) existingObj.get(KEY_RESOURCE);
+                } else {
+                    existingResourceNode = existingObj.putObject(KEY_RESOURCE);
                 }
-            });
-        }
 
-        return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(existingObj);
+                newResourceNode.fieldNames().forEachRemaining(resourceType -> {
+                    JsonNode newTypeBlock = newResourceNode.get(resourceType);
+                    if (newTypeBlock.isObject()) {
+                        ObjectNode existingTypeBlock;
+                        if (existingResourceNode.has(resourceType) && existingResourceNode.get(resourceType).isObject()) {
+                            existingTypeBlock = (ObjectNode) existingResourceNode.get(resourceType);
+                        } else {
+                            existingTypeBlock = existingResourceNode.putObject(resourceType);
+                        }
+
+                        ObjectNode newInstances = (ObjectNode) newTypeBlock;
+                        newInstances.fieldNames().forEachRemaining(instanceName -> {
+                            JsonNode newInstanceValue = newInstances.get(instanceName);
+                            if (existingTypeBlock.has(instanceName) && existingTypeBlock.get(instanceName).isObject() && newInstanceValue.isObject()) {
+                                deepMerge((ObjectNode) existingTypeBlock.get(instanceName), (ObjectNode) newInstanceValue);
+                            } else {
+                                existingTypeBlock.set(instanceName, newInstanceValue.deepCopy());
+                            }
+                        });
+                    }
+                });
+            }
+
+            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(existingObj);
+        } catch (Exception e) {
+            throw new TerraformRepoInitializationException("Failed to upsert Terraform JSON AST structure", e);
+        }
     }
 
     private void deepMerge(ObjectNode target, ObjectNode source) {
@@ -178,52 +191,57 @@ public class TerraformGeneratorService {
      * Optimized parallel partitioned stack generation for large constructs (10K+ lines YAML).
      */
     public List<String> generateLargeScaleTerraformJson(Map<String, StorageAccountDto> allAccounts, String baseOutputDir) {
-        log.info("Starting large-scale multi-partition synthesis for {} storage account resources...", allAccounts.size());
-        List<Map.Entry<String, StorageAccountDto>> entries = new ArrayList<>(allAccounts.entrySet());
-        List<List<Map.Entry<String, StorageAccountDto>>> partitions = partition(entries, PARTITION_SIZE);
+        try {
+            log.info("Starting large-scale multi-partition synthesis for {} storage account resources...", allAccounts.size());
+            List<Map.Entry<String, StorageAccountDto>> entries = new ArrayList<>(allAccounts.entrySet());
+            List<List<Map.Entry<String, StorageAccountDto>>> partitions = partition(entries, PARTITION_SIZE);
 
-        List<CompletableFuture<String>> futures = new ArrayList<>();
+            List<CompletableFuture<String>> futures = new ArrayList<>();
 
-        for (int i = 0; i < partitions.size(); i++) {
-            final int partitionIdx = i;
-            final List<Map.Entry<String, StorageAccountDto>> chunk = partitions.get(i);
+            for (int i = 0; i < partitions.size(); i++) {
+                final int partitionIdx = i;
+                final List<Map.Entry<String, StorageAccountDto>> chunk = partitions.get(i);
 
-            CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
-                String stackName = PARTITION_STACK_PREFIX + partitionIdx;
-                String partitionOutDirStr = baseOutputDir + PARTITION_DIR_PREFIX + partitionIdx;
-                File outDir = new File(partitionOutDirStr);
-                if (!outDir.exists()) {
-                    outDir.mkdirs();
-                }
+                CompletableFuture<String> future = CompletableFuture.supplyAsync(() -> {
+                    String stackName = PARTITION_STACK_PREFIX + partitionIdx;
+                    String partitionOutDirStr = baseOutputDir + PARTITION_DIR_PREFIX + partitionIdx;
+                    File outDir = new File(partitionOutDirStr);
+                    if (!outDir.exists()) {
+                        outDir.mkdirs();
+                    }
 
-                App app = new App(AppConfig.builder().outdir(outDir.getAbsolutePath()).build());
-                TerraformStack stack = new TerraformStack(app, stackName);
+                    App app = new App(AppConfig.builder().outdir(outDir.getAbsolutePath()).build());
+                    TerraformStack stack = new TerraformStack(app, stackName);
 
-                for (Map.Entry<String, StorageAccountDto> entry : chunk) {
-                    buildStorageAccountResource(stack, entry.getKey(), entry.getValue());
-                }
+                    for (Map.Entry<String, StorageAccountDto> entry : chunk) {
+                        buildStorageAccountResource(stack, entry.getKey(), entry.getValue());
+                    }
 
-                app.synth();
-                log.info("Partition stack {} with {} resources synthesized successfully.", stackName, chunk.size());
+                    app.synth();
+                    log.info("Partition stack {} with {} resources synthesized successfully.", stackName, chunk.size());
 
-                Path jsonPath = Path.of(outDir.getAbsolutePath(), STACKS_DIR, stackName, CDK_TF_JSON);
-                try {
-                    return Files.exists(jsonPath) ? Files.readString(jsonPath) : EMPTY_JSON;
-                } catch (IOException e) {
-                    log.error("Failed to read synthesized JSON for stack {}", stackName, e);
-                    return EMPTY_JSON;
-                }
-            }, executor);
+                    Path jsonPath = Path.of(outDir.getAbsolutePath(), STACKS_DIR, stackName, CDK_TF_JSON);
+                    try {
+                        return Files.exists(jsonPath) ? Files.readString(jsonPath) : EMPTY_JSON;
+                    } catch (IOException e) {
+                        log.error("Failed to read synthesized JSON for stack {}", stackName, e);
+                        throw new TerraformRepoInitializationException("Failed reading partition synthesized JSON", e);
+                    }
+                }, executor);
 
-            futures.add(future);
+                futures.add(future);
+            }
+
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+            return futures.stream()
+                    .map(CompletableFuture::join)
+                    .toList();
+        } catch (Exception e) {
+            throw new TerraformRepoInitializationException("Failed large-scale multi-partition Terraform JSON synthesis", e);
         }
-
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
-
-        return futures.stream()
-                .map(CompletableFuture::join)
-                .toList();
     }
+
 
     private void buildStorageAccountResource(TerraformStack stack, String accountName, StorageAccountDto accountDto) {
         Map<String, Object> saAttributes = new HashMap<>();
