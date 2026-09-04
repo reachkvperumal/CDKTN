@@ -202,8 +202,21 @@ public class TerraformGeneratorService {
         if (accountDto.getPerformance() != null) saAttributes.put("account_tier", accountDto.getPerformance());
         if (accountDto.getRedundancy() != null) saAttributes.put("account_replication_type", accountDto.getRedundancy());
         if (accountDto.getAccessTier() != null) saAttributes.put("access_tier", accountDto.getAccessTier());
-        if (accountDto.getTags() != null && !accountDto.getTags().isEmpty()) {
+        
+        if (isNonEmpty(accountDto.getTags())) {
             saAttributes.put("tags", accountDto.getTags());
+        }
+        if (isNonEmpty(accountDto.getAzureDataLakeStorageProperties())) {
+            saAttributes.put("azure_data_lake_storage_properties", accountDto.getAzureDataLakeStorageProperties());
+        }
+        if (isNonEmpty(accountDto.getSnowflakeEnvironments())) {
+            saAttributes.put("snowflake_environments", accountDto.getSnowflakeEnvironments());
+        }
+        if (isNonEmpty(accountDto.getStorageAccountReleasers())) {
+            saAttributes.put("storage_account_releasers", accountDto.getStorageAccountReleasers());
+        }
+        if (isNonEmpty(accountDto.getStorageAccountOwners())) {
+            saAttributes.put("storage_account_owners", accountDto.getStorageAccountOwners());
         }
 
         TerraformResource saResource = new TerraformResource(stack, "sa_" + accountName, TerraformResourceConfig.builder()
@@ -212,7 +225,7 @@ public class TerraformGeneratorService {
 
         saAttributes.forEach(saResource::addOverride);
 
-        if (accountDto.getContainers() != null) {
+        if (isNonEmpty(accountDto.getContainers())) {
             accountDto.getContainers().forEach((containerName, containerDto) -> {
                 buildContainerResource(stack, accountName, containerName, containerDto);
             });
@@ -224,6 +237,16 @@ public class TerraformGeneratorService {
         containerAttrs.put("name", containerName);
         containerAttrs.put("storage_account_name", saName);
         if (containerDto.getReplication() != null) containerAttrs.put("replication", containerDto.getReplication());
+        
+        if (isNonEmpty(containerDto.getContainerOwners())) {
+            containerAttrs.put("container_owners", containerDto.getContainerOwners());
+        }
+        if (isNonEmpty(containerDto.getEnvironments())) {
+            containerAttrs.put("environments", containerDto.getEnvironments());
+        }
+        if (isNonEmpty(containerDto.getLifecycleManagement())) {
+            containerAttrs.put("lifecycle_management", containerDto.getLifecycleManagement());
+        }
 
         String safeResourceName = ("container_" + saName + "_" + containerName).replaceAll("[^a-zA-Z0-9_]", "_");
         TerraformResource containerResource = new TerraformResource(stack, safeResourceName,
@@ -234,6 +257,14 @@ public class TerraformGeneratorService {
         containerAttrs.forEach(containerResource::addOverride);
     }
 
+    private boolean isNonEmpty(Collection<?> col) {
+        return col != null && !col.isEmpty();
+    }
+
+    private boolean isNonEmpty(Map<?, ?> map) {
+        return map != null && !map.isEmpty();
+    }
+
     private <T> List<List<T>> partition(List<T> list, int size) {
         List<List<T>> partitions = new ArrayList<>();
         for (int i = 0; i < list.size(); i += size) {
@@ -242,5 +273,6 @@ public class TerraformGeneratorService {
         return partitions;
     }
 }
+
 
 

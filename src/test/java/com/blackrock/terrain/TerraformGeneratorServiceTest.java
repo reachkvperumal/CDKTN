@@ -133,6 +133,27 @@ class TerraformGeneratorServiceTest {
         assertThat(upsertedJson).contains("sa_adax_doc_grok");
         assertThat(upsertedJson).contains("dgrok");
     }
+
+    @Test
+    @DisplayName("Verify empty maps and lists in DTOs are omitted from synthesized Terraform JSON")
+    void testOmitEmptyCollectionsInTerraformJson() throws IOException {
+        StorageAccountDto saDto = StorageAccountDto.builder()
+                .id("test_id")
+                .tribe("test_tribe")
+                .build(); // tags, containers, releasers default to empty collections
+
+        RootConfig rootConfig = RootConfig.builder()
+                .storageAccounts(Map.of("test_account", saDto))
+                .build();
+
+        String synthesizedJson = terraformGeneratorService.generateTerraformJson(rootConfig, "SanitizedStack", "target/cdktf_sanitized");
+
+        assertThat(synthesizedJson).contains("sa_test_account");
+        assertThat(synthesizedJson).doesNotContain("\"tags\": {}");
+        assertThat(synthesizedJson).doesNotContain("\"snowflake_environments\": []");
+        assertThat(synthesizedJson).doesNotContain("\"storage_account_releasers\": []");
+    }
 }
+
 
 
