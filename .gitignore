@@ -1,0 +1,17 @@
+# Target directory
+target/
+
+# CDKTF / CDKTN output
+cdktf.out/
+*.tfstate
+*.tfstate.*
+
+# Excluded input YAML files
+source.yaml
+source2.yaml
+
+# IDE & OS files
+.DS_Store
+.vscode/
+.idea/
+*.iml

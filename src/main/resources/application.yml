@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: cdktn-terraform-generator
+  main:
+    banner-mode: "off"
+
+logging:
+  level:
+    com.blackrock.terrain: INFO
