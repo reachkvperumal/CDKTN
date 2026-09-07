@@ -3,6 +3,8 @@ target/
 
 # CDKTF / CDKTN output
 cdktf.out/
+cdktf_out/
+cdktf_partition_out/
 *.tfstate
 *.tfstate.*
 

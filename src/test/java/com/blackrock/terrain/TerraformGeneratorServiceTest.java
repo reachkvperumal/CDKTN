@@ -1,5 +1,7 @@
 package com.blackrock.terrain;
 
+import com.blackrock.terrain.dto.EventSubscriptionDto;
+import com.blackrock.terrain.dto.QueueDto;
 import com.blackrock.terrain.dto.RootConfig;
 import com.blackrock.terrain.dto.StorageAccountDto;
 import com.blackrock.terrain.service.TerraformGeneratorService;
@@ -167,6 +169,41 @@ class TerraformGeneratorServiceTest {
         assertThatThrownBy(() -> terraformGeneratorService.generateTerraformJson(rootConfig, "InvalidStack", "target/cdktf_invalid"))
                 .isInstanceOf(ConfigurationLoadException.class)
                 .hasMessageContaining("Mandatory attribute 'id' is missing or blank for storage account 'sa_no_id'");
+    }
+
+    @Test
+    @DisplayName("Synthesize storage account with queues and event subscriptions into Terraform JSON")
+    void testSynthesizeQueuesAndEventSubscriptions() throws IOException {
+        QueueDto queueDto = QueueDto.builder()
+                .realResourceName("my_custom_queue")
+                .retentionDays(14)
+                .description("Test Queue Description")
+                .build();
+
+        EventSubscriptionDto eventSubDto = EventSubscriptionDto.builder()
+                .endpointName("webhook_endpoint")
+                .endpointType("WebHook")
+                .eventTypes(List.of("Microsoft.Storage.BlobCreated"))
+                .build();
+
+        StorageAccountDto saDto = StorageAccountDto.builder()
+                .id("queue_sa_id")
+                .tribe("queue_tribe")
+                .queues(Map.of("orders_queue", queueDto))
+                .eventSubscriptions(Map.of("blob_created_sub", eventSubDto))
+                .build();
+
+        RootConfig rootConfig = RootConfig.builder()
+                .storageAccounts(Map.of("queue_sa", saDto))
+                .build();
+
+        String synthesizedJson = terraformGeneratorService.generateTerraformJson(rootConfig, "QueueStack", "target/cdktf_queue");
+
+        assertThat(synthesizedJson).contains("azurerm_storage_queue");
+        assertThat(synthesizedJson).contains("azurerm_eventgrid_event_subscription");
+        assertThat(synthesizedJson).contains("my_custom_queue");
+        assertThat(synthesizedJson).contains("webhook_endpoint");
+        assertThat(synthesizedJson).contains("Microsoft.Storage.BlobCreated");
     }
 }
 

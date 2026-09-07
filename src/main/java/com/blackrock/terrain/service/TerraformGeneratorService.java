@@ -1,6 +1,8 @@
 package com.blackrock.terrain.service;
 
 import com.blackrock.terrain.dto.ContainerDto;
+import com.blackrock.terrain.dto.EventSubscriptionDto;
+import com.blackrock.terrain.dto.QueueDto;
 import com.blackrock.terrain.dto.RootConfig;
 import com.blackrock.terrain.dto.StorageAccountDto;
 import com.blackrock.terrain.exception.ConfigurationLoadException;
@@ -35,6 +37,8 @@ public class TerraformGeneratorService {
 
     private static final String RESOURCE_TYPE_STORAGE_ACCOUNT = "azurerm_storage_account";
     private static final String RESOURCE_TYPE_STORAGE_CONTAINER = "azurerm_storage_container";
+    private static final String RESOURCE_TYPE_STORAGE_QUEUE = "azurerm_storage_queue";
+    private static final String RESOURCE_TYPE_EVENT_SUBSCRIPTION = "azurerm_eventgrid_event_subscription";
 
     private static final String ATTR_NAME = "name";
     private static final String ATTR_ACCOUNT_ID = "account_id";
@@ -54,12 +58,24 @@ public class TerraformGeneratorService {
     private static final String ATTR_ENVIRONMENTS = "environments";
     private static final String ATTR_LIFECYCLE_MANAGEMENT = "lifecycle_management";
 
+    private static final String ATTR_RETENTION_DAYS = "retention_days";
+    private static final String ATTR_REAL_RESOURCE_NAME = "real_resource_name";
+    private static final String ATTR_DESCRIPTION = "description";
+    private static final String ATTR_READERS = "readers";
+    private static final String ATTR_WRITERS = "writers";
+
+    private static final String ATTR_EVENT_TYPES = "event_types";
+    private static final String ATTR_ENDPOINT_NAME = "endpoint_name";
+    private static final String ATTR_ENDPOINT_TYPE = "endpoint_type";
+
     private static final String KEY_RESOURCE = "resource";
     private static final String STACKS_DIR = "stacks";
     private static final String CDK_TF_JSON = "cdk.tf.json";
     private static final String EMPTY_JSON = "{}";
     private static final String PREFIX_SA_RESOURCE = "sa_";
     private static final String PREFIX_CONTAINER_RESOURCE = "container_";
+    private static final String PREFIX_QUEUE_RESOURCE = "queue_";
+    private static final String PREFIX_EVENT_SUB_RESOURCE = "eventsub_";
     private static final String PARTITION_STACK_PREFIX = "PartitionStack_";
     private static final String PARTITION_DIR_PREFIX = "/partition_";
 
@@ -308,6 +324,18 @@ public class TerraformGeneratorService {
                 buildContainerResource(stack, accountName, containerName, containerDto);
             });
         }
+
+        if (isNonEmpty(accountDto.getQueues())) {
+            accountDto.getQueues().forEach((queueName, queueDto) -> {
+                buildQueueResource(stack, accountName, queueName, queueDto);
+            });
+        }
+
+        if (isNonEmpty(accountDto.getEventSubscriptions())) {
+            accountDto.getEventSubscriptions().forEach((subName, subDto) -> {
+                buildEventSubscriptionResource(stack, accountName, subName, subDto);
+            });
+        }
     }
 
     private void buildContainerResource(TerraformStack stack, String saName, String containerName, ContainerDto containerDto) {
@@ -333,6 +361,70 @@ public class TerraformGeneratorService {
                         .build());
 
         containerAttrs.forEach(containerResource::addOverride);
+
+        if (isNonEmpty(containerDto.getEventSubscriptions())) {
+            containerDto.getEventSubscriptions().forEach((subName, subDto) -> {
+                buildEventSubscriptionResource(stack, saName + "_" + containerName, subName, subDto);
+            });
+        }
+    }
+
+    private void buildQueueResource(TerraformStack stack, String saName, String queueName, QueueDto queueDto) {
+        if (queueDto == null) return;
+
+        Map<String, Object> queueAttrs = new HashMap<>();
+        queueAttrs.put(ATTR_NAME, queueName);
+        queueAttrs.put(ATTR_STORAGE_ACCOUNT_NAME, saName);
+
+        if (queueDto.getRealResourceName() != null) {
+            queueAttrs.put(ATTR_REAL_RESOURCE_NAME, queueDto.getRealResourceName());
+        }
+        if (queueDto.getRetentionDays() != null) {
+            queueAttrs.put(ATTR_RETENTION_DAYS, queueDto.getRetentionDays());
+        }
+        if (queueDto.getDescription() != null) {
+            queueAttrs.put(ATTR_DESCRIPTION, queueDto.getDescription());
+        }
+        if (queueDto.getReaders() != null) {
+            queueAttrs.put(ATTR_READERS, queueDto.getReaders());
+        }
+        if (queueDto.getWriters() != null) {
+            queueAttrs.put(ATTR_WRITERS, queueDto.getWriters());
+        }
+
+        String safeResourceName = (PREFIX_QUEUE_RESOURCE + saName + "_" + queueName).replaceAll("[^a-zA-Z0-9_]", "_");
+        TerraformResource queueResource = new TerraformResource(stack, safeResourceName,
+                TerraformResourceConfig.builder()
+                        .terraformResourceType(RESOURCE_TYPE_STORAGE_QUEUE)
+                        .build());
+
+        queueAttrs.forEach(queueResource::addOverride);
+    }
+
+    private void buildEventSubscriptionResource(TerraformStack stack, String parentName, String subName, EventSubscriptionDto subDto) {
+        if (subDto == null) return;
+
+        Map<String, Object> subAttrs = new HashMap<>();
+        subAttrs.put(ATTR_NAME, subName);
+        subAttrs.put(ATTR_STORAGE_ACCOUNT_NAME, parentName);
+
+        if (subDto.getEndpointName() != null) {
+            subAttrs.put(ATTR_ENDPOINT_NAME, subDto.getEndpointName());
+        }
+        if (subDto.getEndpointType() != null) {
+            subAttrs.put(ATTR_ENDPOINT_TYPE, subDto.getEndpointType());
+        }
+        if (isNonEmpty(subDto.getEventTypes())) {
+            subAttrs.put(ATTR_EVENT_TYPES, subDto.getEventTypes());
+        }
+
+        String safeResourceName = (PREFIX_EVENT_SUB_RESOURCE + parentName + "_" + subName).replaceAll("[^a-zA-Z0-9_]", "_");
+        TerraformResource eventSubResource = new TerraformResource(stack, safeResourceName,
+                TerraformResourceConfig.builder()
+                        .terraformResourceType(RESOURCE_TYPE_EVENT_SUBSCRIPTION)
+                        .build());
+
+        subAttrs.forEach(eventSubResource::addOverride);
     }
 
     private boolean isNonEmpty(Collection<?> col) {

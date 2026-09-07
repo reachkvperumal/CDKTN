@@ -34,8 +34,8 @@ public class StorageAccountDto {
     @JsonProperty("enable_replication")
     private Boolean enableReplication;
 
-    @JsonProperty("expc_GB_storage")
-    private Integer expcGbStorage;
+    @JsonProperty("expected_GB_storage")
+    private Integer expectedGbStorage;
 
     @JsonProperty("soft_delete_duration")
     private Integer softDeleteDuration;
@@ -100,4 +100,20 @@ public class StorageAccountDto {
     @JsonProperty("env_overrides")
     @Builder.Default
     private Map<String, Map<String, Object>> envOverrides = new HashMap<>();
+
+    @JsonProperty("destroy_sa_env")
+    @Builder.Default
+    private List<String> destroySaEnv = new ArrayList<>();
+
+    @Builder.Default
+    private Map<String, QueueDto> queues = new HashMap<>();
+
+    @JsonProperty("event_subscriptions")
+    @Builder.Default
+    private Map<String, EventSubscriptionDto> eventSubscriptions = new HashMap<>();
+
+    @JsonProperty("is_test")
+    private Boolean isTest;
+
+    private String description;
 }

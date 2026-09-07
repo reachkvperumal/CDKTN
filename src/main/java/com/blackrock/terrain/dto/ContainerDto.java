@@ -36,4 +36,17 @@ public class ContainerDto {
     @JsonProperty("env_overrides")
     @Builder.Default
     private Map<String, Map<String, Object>> envOverrides = new HashMap<>();
+
+    private AccessControlDto readers;
+    private AccessControlDto writers;
+
+    @JsonProperty("event_subscriptions")
+    @Builder.Default
+    private Map<String, EventSubscriptionDto> eventSubscriptions = new HashMap<>();
+
+    @JsonProperty("real_resource_name")
+    private String realResourceName;
+
+    private Integer softDeleteDuration;
+    private Integer retentionDays;
 }
