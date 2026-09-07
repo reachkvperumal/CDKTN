@@ -54,6 +54,7 @@ public class YamlParserService {
             options.setAllowDuplicateKeys(true);
             options.setMaxAliasesForCollections(Integer.MAX_VALUE);
             options.setCodePointLimit(100 * 1024 * 1024);
+            options.setTagInspector(tag -> true);
 
             DumperOptions dumperOptions = new DumperOptions();
             Representer representer = new Representer(dumperOptions);
