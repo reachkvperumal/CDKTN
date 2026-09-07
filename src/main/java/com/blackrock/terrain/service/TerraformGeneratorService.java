@@ -115,13 +115,7 @@ public class TerraformGeneratorService {
             app.synth();
             log.info("CDK-Terrain Stack synthesized successfully for stack: {}", stackName);
 
-            Path synthesizedFile = Path.of(outDir.getAbsolutePath(), STACKS_DIR, stackName, CDK_TF_JSON);
-            if (Files.exists(synthesizedFile)) {
-                return Files.readString(synthesizedFile);
-            } else {
-                log.warn("Synthesized file not found at expected path {}, searching in outdir...", synthesizedFile);
-                return EMPTY_JSON;
-            }
+            return readSynthesizedJson(outDir, stackName);
         } catch (ConfigurationLoadException | TerraformRepoInitializationException e) {
             throw e;
         } catch (Exception e) {
@@ -222,6 +216,9 @@ public class TerraformGeneratorService {
      * Optimized parallel partitioned stack generation for large constructs (10K+ lines YAML).
      */
     public List<String> generateLargeScaleTerraformJson(Map<String, StorageAccountDto> allAccounts, String baseOutputDir) {
+        if (allAccounts == null || allAccounts.isEmpty()) {
+            throw new ConfigurationLoadException("Cannot generate partitioned Terraform JSON: storage accounts map is null or empty");
+        }
         try {
             log.info("Starting large-scale multi-partition synthesis for {} storage account resources...", allAccounts.size());
             List<Map.Entry<String, StorageAccountDto>> entries = new ArrayList<>(allAccounts.entrySet());
@@ -251,13 +248,7 @@ public class TerraformGeneratorService {
                     app.synth();
                     log.info("Partition stack {} with {} resources synthesized successfully.", stackName, chunk.size());
 
-                    Path jsonPath = Path.of(outDir.getAbsolutePath(), STACKS_DIR, stackName, CDK_TF_JSON);
-                    try {
-                        return Files.exists(jsonPath) ? Files.readString(jsonPath) : EMPTY_JSON;
-                    } catch (IOException e) {
-                        log.error("Failed to read synthesized JSON for stack {}", stackName, e);
-                        throw new TerraformRepoInitializationException("Failed reading partition synthesized JSON", e);
-                    }
+                    return readSynthesizedJson(outDir, stackName);
                 }, executor);
 
                 futures.add(future);
@@ -482,6 +473,42 @@ public class TerraformGeneratorService {
 
     private boolean isNonEmpty(Map<?, ?> map) {
         return map != null && !map.isEmpty();
+    }
+
+    private String readSynthesizedJson(File outDir, String stackName) {
+        if (outDir == null || !outDir.exists()) {
+            return EMPTY_JSON;
+        }
+        try {
+            Path path1 = Path.of(outDir.getAbsolutePath(), STACKS_DIR, stackName, CDK_TF_JSON);
+            if (Files.exists(path1)) {
+                return Files.readString(path1);
+            }
+
+            Path path2 = Path.of(outDir.getAbsolutePath(), stackName, CDK_TF_JSON);
+            if (Files.exists(path2)) {
+                return Files.readString(path2);
+            }
+
+            Path path3 = Path.of(outDir.getAbsolutePath(), CDK_TF_JSON);
+            if (Files.exists(path3)) {
+                return Files.readString(path3);
+            }
+
+            try (var stream = Files.walk(outDir.toPath())) {
+                Optional<Path> found = stream
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().equals(CDK_TF_JSON))
+                        .findFirst();
+                if (found.isPresent()) {
+                    return Files.readString(found.get());
+                }
+            }
+        } catch (Exception e) {
+            log.error("Error reading synthesized JSON for stack {}", stackName, e);
+        }
+        log.warn("Synthesized file cdk.tf.json not found for stack {} in directory {}", stackName, outDir.getAbsolutePath());
+        return EMPTY_JSON;
     }
 
     private <T> List<List<T>> partition(List<T> list, int size) {

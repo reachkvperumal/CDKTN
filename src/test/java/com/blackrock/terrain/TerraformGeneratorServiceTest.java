@@ -55,10 +55,18 @@ class TerraformGeneratorServiceTest {
         assertThat(file).exists();
 
         Map<String, StorageAccountDto> accounts = yamlParserService.parseYamlFile(file).getStorageAccounts();
+        if (accounts == null || accounts.isEmpty()) {
+            try (InputStream is = new FileInputStream(file)) {
+                accounts = yamlParserService.streamLargeYaml(is);
+            }
+        }
+
+        assertThat(accounts).as("Parsed storage accounts map from source2.yaml must not be null or empty").isNotNull().isNotEmpty();
+
         List<String> jsonOutputs = terraformGeneratorService.generateLargeScaleTerraformJson(accounts, "target/cdktf_partition_out");
 
-        assertThat(jsonOutputs).isNotEmpty();
-        assertThat(jsonOutputs.get(0)).contains("azurerm_storage_account");
+        assertThat(jsonOutputs).as("Synthesized partition outputs list must not be empty").isNotEmpty();
+        assertThat(jsonOutputs.get(0)).as("Synthesized partition JSON must contain azurerm_storage_account").contains("azurerm_storage_account");
     }
 
     @Test
