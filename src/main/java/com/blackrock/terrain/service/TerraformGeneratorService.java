@@ -480,27 +480,45 @@ public class TerraformGeneratorService {
             return EMPTY_JSON;
         }
         try {
-            Path path1 = Path.of(outDir.getAbsolutePath(), STACKS_DIR, stackName, CDK_TF_JSON);
-            if (Files.exists(path1)) {
-                return Files.readString(path1);
+            Path outPath = outDir.toPath().toAbsolutePath().normalize();
+
+            List<Path> candidatePaths = List.of(
+                    outPath.resolve(STACKS_DIR).resolve(stackName).resolve(CDK_TF_JSON),
+                    outPath.resolve("cdktf.out").resolve(STACKS_DIR).resolve(stackName).resolve(CDK_TF_JSON),
+                    outPath.resolve(stackName).resolve(CDK_TF_JSON),
+                    outPath.resolve("cdktf.out").resolve(stackName).resolve(CDK_TF_JSON),
+                    outPath.resolve(CDK_TF_JSON),
+                    outPath.resolve("cdktf.out").resolve(CDK_TF_JSON)
+            );
+
+            for (Path candidate : candidatePaths) {
+                if (Files.exists(candidate) && Files.isRegularFile(candidate)) {
+                    log.info("Found synthesized CDKTF file for stack '{}' at: {}", stackName, candidate);
+                    return Files.readString(candidate);
+                }
             }
 
-            Path path2 = Path.of(outDir.getAbsolutePath(), stackName, CDK_TF_JSON);
-            if (Files.exists(path2)) {
-                return Files.readString(path2);
-            }
-
-            Path path3 = Path.of(outDir.getAbsolutePath(), CDK_TF_JSON);
-            if (Files.exists(path3)) {
-                return Files.readString(path3);
-            }
-
-            try (var stream = Files.walk(outDir.toPath())) {
+            try (var stream = Files.walk(outPath)) {
                 Optional<Path> found = stream
                         .filter(Files::isRegularFile)
-                        .filter(p -> p.getFileName().toString().equals(CDK_TF_JSON))
+                        .filter(p -> p.getFileName().toString().equalsIgnoreCase(CDK_TF_JSON))
+                        .filter(p -> p.getParent() != null && p.getParent().getFileName().toString().equalsIgnoreCase(stackName))
                         .findFirst();
+
                 if (found.isPresent()) {
+                    log.info("Found synthesized CDKTF file via recursive search for stack '{}' at: {}", stackName, found.get());
+                    return Files.readString(found.get());
+                }
+            }
+
+            try (var stream = Files.walk(outPath)) {
+                Optional<Path> found = stream
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().equalsIgnoreCase(CDK_TF_JSON))
+                        .findFirst();
+
+                if (found.isPresent()) {
+                    log.warn("Found fallback CDKTF file for stack '{}' at: {}", stackName, found.get());
                     return Files.readString(found.get());
                 }
             }
