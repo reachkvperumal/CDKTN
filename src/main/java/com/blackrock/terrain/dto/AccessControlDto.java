@@ -25,4 +25,8 @@ public class AccessControlDto {
     @JsonProperty("groupID")
     @Builder.Default
     private List<String> groupId = new ArrayList<>();
+
+    @JsonProperty("external_uuid")
+    @Builder.Default
+    private List<String> externalUuid = new ArrayList<>();
 }
