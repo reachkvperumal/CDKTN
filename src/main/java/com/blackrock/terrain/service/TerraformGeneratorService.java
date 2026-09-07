@@ -326,7 +326,8 @@ public class TerraformGeneratorService {
             saAttributes.put(ATTR_DESTROY_SA_ENV, accountDto.getDestroySaEnv());
         }
 
-        TerraformResource saResource = new TerraformResource(stack, PREFIX_SA_RESOURCE + accountName, TerraformResourceConfig.builder()
+        String saConstructId = getUniqueConstructId(stack, PREFIX_SA_RESOURCE + accountName);
+        TerraformResource saResource = new TerraformResource(stack, saConstructId, TerraformResourceConfig.builder()
                 .terraformResourceType(RESOURCE_TYPE_STORAGE_ACCOUNT)
                 .build());
 
@@ -382,8 +383,8 @@ public class TerraformGeneratorService {
             containerAttrs.put(ATTR_RETENTION_DAYS, containerDto.getRetentionDays());
         }
 
-        String safeResourceName = (PREFIX_CONTAINER_RESOURCE + saName + "_" + containerName).replaceAll("[^a-zA-Z0-9_]", "_");
-        TerraformResource containerResource = new TerraformResource(stack, safeResourceName,
+        String containerConstructId = getUniqueConstructId(stack, PREFIX_CONTAINER_RESOURCE + saName + "_" + containerName);
+        TerraformResource containerResource = new TerraformResource(stack, containerConstructId,
                 TerraformResourceConfig.builder()
                         .terraformResourceType(RESOURCE_TYPE_STORAGE_CONTAINER)
                         .build());
@@ -420,8 +421,8 @@ public class TerraformGeneratorService {
             queueAttrs.put(ATTR_WRITERS, queueDto.getWriters());
         }
 
-        String safeResourceName = (PREFIX_QUEUE_RESOURCE + saName + "_" + queueName).replaceAll("[^a-zA-Z0-9_]", "_");
-        TerraformResource queueResource = new TerraformResource(stack, safeResourceName,
+        String queueConstructId = getUniqueConstructId(stack, PREFIX_QUEUE_RESOURCE + saName + "_" + queueName);
+        TerraformResource queueResource = new TerraformResource(stack, queueConstructId,
                 TerraformResourceConfig.builder()
                         .terraformResourceType(RESOURCE_TYPE_STORAGE_QUEUE)
                         .build());
@@ -458,8 +459,8 @@ public class TerraformGeneratorService {
             subAttrs.put(ATTR_ENABLED, subDto.getEnabled());
         }
 
-        String safeResourceName = (PREFIX_EVENT_SUB_RESOURCE + parentName + "_" + subName).replaceAll("[^a-zA-Z0-9_]", "_");
-        TerraformResource eventSubResource = new TerraformResource(stack, safeResourceName,
+        String eventSubConstructId = getUniqueConstructId(stack, PREFIX_EVENT_SUB_RESOURCE + parentName + "_" + subName);
+        TerraformResource eventSubResource = new TerraformResource(stack, eventSubConstructId,
                 TerraformResourceConfig.builder()
                         .terraformResourceType(RESOURCE_TYPE_EVENT_SUBSCRIPTION)
                         .build());
@@ -473,6 +474,16 @@ public class TerraformGeneratorService {
 
     private boolean isNonEmpty(Map<?, ?> map) {
         return map != null && !map.isEmpty();
+    }
+
+    private String getUniqueConstructId(TerraformStack stack, String rawName) {
+        String baseId = rawName.replaceAll("[^a-zA-Z0-9_]", "_");
+        String uniqueId = baseId;
+        int counter = 1;
+        while (stack.getNode().tryFindChild(uniqueId) != null) {
+            uniqueId = baseId + "_" + counter++;
+        }
+        return uniqueId;
     }
 
     private String readSynthesizedJson(File outDir, String stackName) {
