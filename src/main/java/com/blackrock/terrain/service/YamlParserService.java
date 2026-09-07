@@ -57,7 +57,7 @@ public class YamlParserService {
 
             DumperOptions dumperOptions = new DumperOptions();
             Representer representer = new Representer(dumperOptions);
-            Yaml yaml = new Yaml(new SafeConstructor(options), representer, dumperOptions, options);
+            Yaml yaml = new Yaml(new org.yaml.snakeyaml.constructor.Constructor(options), representer, dumperOptions, options);
 
             Object loadedYaml = yaml.load(inputStream);
             if (loadedYaml == null) {
