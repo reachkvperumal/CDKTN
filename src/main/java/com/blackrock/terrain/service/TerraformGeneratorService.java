@@ -67,6 +67,13 @@ public class TerraformGeneratorService {
     private static final String ATTR_EVENT_TYPES = "event_types";
     private static final String ATTR_ENDPOINT_NAME = "endpoint_name";
     private static final String ATTR_ENDPOINT_TYPE = "endpoint_type";
+    private static final String ATTR_SUBJECT_BEGINS_WITH = "subject_begins_with";
+    private static final String ATTR_SUBJECT_ENDS_WITH = "subject_ends_with";
+    private static final String ATTR_INCLUDED_EVENT_TYPES = "included_event_types";
+    private static final String ATTR_ENABLED = "enabled";
+    private static final String ATTR_DESTROY_SA_ENV = "destroy_sa_env";
+    private static final String ATTR_IS_TEST = "is_test";
+    private static final String ATTR_SOFT_DELETE_DURATION = "soft_delete_duration";
 
     private static final String KEY_RESOURCE = "resource";
     private static final String STACKS_DIR = "stacks";
@@ -312,6 +319,21 @@ public class TerraformGeneratorService {
         if (isNonEmpty(accountDto.getStorageAccountOwners())) {
             saAttributes.put(ATTR_STORAGE_ACCOUNT_OWNERS, accountDto.getStorageAccountOwners());
         }
+        if (accountDto.getReaders() != null) {
+            saAttributes.put(ATTR_READERS, accountDto.getReaders());
+        }
+        if (accountDto.getWriters() != null) {
+            saAttributes.put(ATTR_WRITERS, accountDto.getWriters());
+        }
+        if (accountDto.getDescription() != null) {
+            saAttributes.put(ATTR_DESCRIPTION, accountDto.getDescription());
+        }
+        if (accountDto.getIsTest() != null) {
+            saAttributes.put(ATTR_IS_TEST, accountDto.getIsTest());
+        }
+        if (isNonEmpty(accountDto.getDestroySaEnv())) {
+            saAttributes.put(ATTR_DESTROY_SA_ENV, accountDto.getDestroySaEnv());
+        }
 
         TerraformResource saResource = new TerraformResource(stack, PREFIX_SA_RESOURCE + accountName, TerraformResourceConfig.builder()
                 .terraformResourceType(RESOURCE_TYPE_STORAGE_ACCOUNT)
@@ -352,6 +374,21 @@ public class TerraformGeneratorService {
         }
         if (isNonEmpty(containerDto.getLifecycleManagement())) {
             containerAttrs.put(ATTR_LIFECYCLE_MANAGEMENT, containerDto.getLifecycleManagement());
+        }
+        if (containerDto.getReaders() != null) {
+            containerAttrs.put(ATTR_READERS, containerDto.getReaders());
+        }
+        if (containerDto.getWriters() != null) {
+            containerAttrs.put(ATTR_WRITERS, containerDto.getWriters());
+        }
+        if (containerDto.getRealResourceName() != null) {
+            containerAttrs.put(ATTR_REAL_RESOURCE_NAME, containerDto.getRealResourceName());
+        }
+        if (containerDto.getSoftDeleteDuration() != null) {
+            containerAttrs.put(ATTR_SOFT_DELETE_DURATION, containerDto.getSoftDeleteDuration());
+        }
+        if (containerDto.getRetentionDays() != null) {
+            containerAttrs.put(ATTR_RETENTION_DAYS, containerDto.getRetentionDays());
         }
 
         String safeResourceName = (PREFIX_CONTAINER_RESOURCE + saName + "_" + containerName).replaceAll("[^a-zA-Z0-9_]", "_");
@@ -416,6 +453,18 @@ public class TerraformGeneratorService {
         }
         if (isNonEmpty(subDto.getEventTypes())) {
             subAttrs.put(ATTR_EVENT_TYPES, subDto.getEventTypes());
+        }
+        if (subDto.getSubjectBeginsWith() != null) {
+            subAttrs.put(ATTR_SUBJECT_BEGINS_WITH, subDto.getSubjectBeginsWith());
+        }
+        if (subDto.getSubjectEndsWith() != null) {
+            subAttrs.put(ATTR_SUBJECT_ENDS_WITH, subDto.getSubjectEndsWith());
+        }
+        if (isNonEmpty(subDto.getIncludedEventTypes())) {
+            subAttrs.put(ATTR_INCLUDED_EVENT_TYPES, subDto.getIncludedEventTypes());
+        }
+        if (subDto.getEnabled() != null) {
+            subAttrs.put(ATTR_ENABLED, subDto.getEnabled());
         }
 
         String safeResourceName = (PREFIX_EVENT_SUB_RESOURCE + parentName + "_" + subName).replaceAll("[^a-zA-Z0-9_]", "_");

@@ -29,4 +29,15 @@ public class EventSubscriptionDto {
     @JsonProperty("endpoint_type")
     private String endpointType;
 
+    @JsonProperty("subject_begins_with")
+    private String subjectBeginsWith;
+
+    @JsonProperty("subject_ends_with")
+    private String subjectEndsWith;
+
+    @JsonProperty("included_event_types")
+    @Builder.Default
+    private List<String> includedEventTypes = new ArrayList<>();
+
+    private Boolean enabled;
 }

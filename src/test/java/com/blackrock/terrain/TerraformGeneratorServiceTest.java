@@ -184,11 +184,18 @@ class TerraformGeneratorServiceTest {
                 .endpointName("webhook_endpoint")
                 .endpointType("WebHook")
                 .eventTypes(List.of("Microsoft.Storage.BlobCreated"))
+                .subjectBeginsWith("/blobServices/default/containers/input")
+                .subjectEndsWith(".csv")
+                .includedEventTypes(List.of("Microsoft.Storage.BlobCreated"))
+                .enabled(true)
                 .build();
 
         StorageAccountDto saDto = StorageAccountDto.builder()
                 .id("queue_sa_id")
                 .tribe("queue_tribe")
+                .isTest(true)
+                .description("Storage Account with Queue and Event Subscriptions")
+                .destroySaEnv(List.of("dev", "tst"))
                 .queues(Map.of("orders_queue", queueDto))
                 .eventSubscriptions(Map.of("blob_created_sub", eventSubDto))
                 .build();
@@ -204,6 +211,10 @@ class TerraformGeneratorServiceTest {
         assertThat(synthesizedJson).contains("my_custom_queue");
         assertThat(synthesizedJson).contains("webhook_endpoint");
         assertThat(synthesizedJson).contains("Microsoft.Storage.BlobCreated");
+        assertThat(synthesizedJson).contains("/blobServices/default/containers/input");
+        assertThat(synthesizedJson).contains(".csv");
+        assertThat(synthesizedJson).contains("is_test");
+        assertThat(synthesizedJson).contains("destroy_sa_env");
     }
 }
 
