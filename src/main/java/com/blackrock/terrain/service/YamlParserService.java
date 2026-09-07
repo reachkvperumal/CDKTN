@@ -70,6 +70,15 @@ public class YamlParserService {
                 if (rawMap.containsKey(KEY_STORAGE_ACCOUNTS)) {
                     log.info("Parsing standard root schema with 'storage_accounts' block...");
                     rootConfig = yamlObjectMapper.convertValue(rawMap, RootConfig.class);
+                    if ((rootConfig.getStorageAccounts() == null || rootConfig.getStorageAccounts().isEmpty()) && rawMap.get(KEY_STORAGE_ACCOUNTS) != null) {
+                        Map<String, StorageAccountDto> accounts = yamlObjectMapper.convertValue(
+                                rawMap.get(KEY_STORAGE_ACCOUNTS),
+                                new TypeReference<Map<String, StorageAccountDto>>() {}
+                        );
+                        if (accounts != null) {
+                            rootConfig.setStorageAccounts(accounts);
+                        }
+                    }
                 } else {
                     log.info("Parsing direct storage account map schema...");
                     Map<String, StorageAccountDto> storageAccounts = yamlObjectMapper.convertValue(

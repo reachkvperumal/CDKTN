@@ -29,4 +29,14 @@ public class RootConfig {
     @JsonProperty("storage_accounts")
     @Builder.Default
     private Map<String, StorageAccountDto> storageAccounts = new HashMap<>();
+
+    @JsonProperty("storage_accounts")
+    public Map<String, StorageAccountDto> getStorageAccounts() {
+        return storageAccounts;
+    }
+
+    @JsonProperty("storage_accounts")
+    public void setStorageAccounts(Map<String, StorageAccountDto> storageAccounts) {
+        this.storageAccounts = storageAccounts;
+    }
 }
