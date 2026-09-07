@@ -20,6 +20,7 @@ public class YamlConfig {
         loaderOptions.setAllowDuplicateKeys(true);
         loaderOptions.setMaxAliasesForCollections(Integer.MAX_VALUE);
         loaderOptions.setCodePointLimit(100 * 1024 * 1024);
+        loaderOptions.setTagInspector(tag -> true);
 
         YAMLFactory yamlFactory = YAMLFactory.builder()
                 .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)

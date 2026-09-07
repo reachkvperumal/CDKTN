@@ -15,6 +15,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -95,7 +96,7 @@ class YamlParserServiceTest {
                     tribe: test_tribe
                 """;
 
-        InputStream is = new java.io.ByteArrayInputStream(invalidYaml.getBytes());
+        InputStream is = new java.io.ByteArrayInputStream(invalidYaml.getBytes(StandardCharsets.UTF_8));
         assertThatThrownBy(() -> yamlParserService.parseYamlStream(is))
                 .isInstanceOf(ConfigurationLoadException.class)
                 .hasMessageContaining("Mandatory attribute 'id' is missing or blank for storage account 'invalid_sa'");
@@ -113,7 +114,7 @@ class YamlParserServiceTest {
             sb.append("  sa_alias_").append(i).append(": *tpl_sa\n");
         }
 
-        InputStream is = new java.io.ByteArrayInputStream(sb.toString().getBytes());
+        InputStream is = new java.io.ByteArrayInputStream(sb.toString().getBytes(StandardCharsets.UTF_8));
         RootConfig rootConfig = yamlParserService.parseYamlStream(is);
         assertThat(rootConfig.getStorageAccounts()).hasSize(500);
     }
