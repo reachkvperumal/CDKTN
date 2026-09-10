@@ -86,7 +86,7 @@ public class TerraformGeneratorService {
     private static final String PARTITION_STACK_PREFIX = "PartitionStack_";
     private static final String PARTITION_DIR_PREFIX = "/partition_";
 
-    private final ObjectMapper objectMapper;
+    private final ObjectMapper jsonMapper = new ObjectMapper();
 
     private static final int PARTITION_SIZE = 500;
     private final ExecutorService executor = Executors.newFixedThreadPool(
@@ -151,8 +151,8 @@ public class TerraformGeneratorService {
                 return existingJson;
             }
 
-            JsonNode existingTree = objectMapper.readTree(existingJson);
-            JsonNode newTree = objectMapper.readTree(newJson);
+            JsonNode existingTree = jsonMapper.readTree(existingJson);
+            JsonNode newTree = jsonMapper.readTree(newJson);
 
             if (!(existingTree instanceof ObjectNode existingObj) || !(newTree instanceof ObjectNode newObj)) {
                 return newJson;
@@ -191,7 +191,7 @@ public class TerraformGeneratorService {
                 });
             }
 
-            return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(existingObj);
+            return jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(existingObj);
         } catch (ConfigurationLoadException | TerraformRepoInitializationException e) {
             throw e;
         } catch (Exception e) {
@@ -279,6 +279,8 @@ public class TerraformGeneratorService {
 
 
 
+
+
     private void buildStorageAccountResource(TerraformStack stack, String accountName, StorageAccountDto accountDto) {
         if (accountDto == null || accountDto.getId() == null || accountDto.getId().isBlank()) {
             throw new ConfigurationLoadException(
@@ -286,44 +288,60 @@ public class TerraformGeneratorService {
             );
         }
 
-        Map<String, Object> saAttributes = new HashMap<>();
-        saAttributes.put(ATTR_NAME, accountName);
-        saAttributes.put(ATTR_ACCOUNT_ID, accountDto.getId());
-        if (accountDto.getTribe() != null) saAttributes.put(ATTR_TRIBE, accountDto.getTribe());
-        if (accountDto.getPerformance() != null) saAttributes.put(ATTR_ACCOUNT_TIER, accountDto.getPerformance());
-        if (accountDto.getRedundancy() != null) saAttributes.put(ATTR_ACCOUNT_REPLICATION_TYPE, accountDto.getRedundancy());
-        if (accountDto.getAccessTier() != null) saAttributes.put(ATTR_ACCESS_TIER, accountDto.getAccessTier());
+        Map<String, Object> saAttributes = new LinkedHashMap<>();
+        saAttributes.put(ATTR_NAME, sanitizeStorageAccountName(accountName));
+        saAttributes.put("resource_group_name", accountDto.getTenantName() != null ? "rg-" + accountDto.getTenantName() : "rg-terrain");
+        saAttributes.put("location", "eastus");
+        saAttributes.put(ATTR_ACCOUNT_TIER, formatAccountTier(accountDto.getPerformance()));
+        saAttributes.put(ATTR_ACCOUNT_REPLICATION_TYPE, formatReplicationType(accountDto.getRedundancy()));
 
+        if (accountDto.getAccessTier() != null) {
+            saAttributes.put(ATTR_ACCESS_TIER, formatAccountTier(accountDto.getAccessTier()));
+        }
 
+        // Pack custom domain metadata into standard 'tags' map
+        Map<String, String> tagsMap = new LinkedHashMap<>();
         if (isNonEmpty(accountDto.getTags())) {
-            saAttributes.put(ATTR_TAGS, accountDto.getTags());
+            accountDto.getTags().forEach((k, v) -> {
+                if (k != null && v != null) {
+                    tagsMap.put(k, String.valueOf(v));
+                }
+            });
         }
-        if (isNonEmpty(accountDto.getAzureDataLakeStorageProperties())) {
-            saAttributes.put(ATTR_AZURE_DATA_LAKE_STORAGE_PROPERTIES, accountDto.getAzureDataLakeStorageProperties());
-        }
-        if (isNonEmpty(accountDto.getSnowflakeEnvironments())) {
-            saAttributes.put(ATTR_SNOWFLAKE_ENVIRONMENTS, accountDto.getSnowflakeEnvironments());
-        }
+
+        tagsMap.put("account_id", accountDto.getId());
+        if (accountDto.getTribe() != null) tagsMap.put("tribe", accountDto.getTribe());
+
         if (isNonEmpty(accountDto.getStorageAccountReleasers())) {
-            saAttributes.put(ATTR_STORAGE_ACCOUNT_RELEASERS, accountDto.getStorageAccountReleasers());
+            tagsMap.put("storage_account_releasers", String.join(",", accountDto.getStorageAccountReleasers()));
         }
         if (isNonEmpty(accountDto.getStorageAccountOwners())) {
-            saAttributes.put(ATTR_STORAGE_ACCOUNT_OWNERS, accountDto.getStorageAccountOwners());
+            tagsMap.put("storage_account_owners", String.join(",", accountDto.getStorageAccountOwners()));
         }
         if (accountDto.getReaders() != null) {
-            saAttributes.put(ATTR_READERS, accountDto.getReaders());
+            tagsMap.put("readers", toJsonString(accountDto.getReaders()));
         }
         if (accountDto.getWriters() != null) {
-            saAttributes.put(ATTR_WRITERS, accountDto.getWriters());
+            tagsMap.put("writers", toJsonString(accountDto.getWriters()));
+        }
+        if (isNonEmpty(accountDto.getAzureDataLakeStorageProperties())) {
+            tagsMap.put("azure_data_lake_storage_properties", toJsonString(accountDto.getAzureDataLakeStorageProperties()));
+        }
+        if (isNonEmpty(accountDto.getSnowflakeEnvironments())) {
+            tagsMap.put("snowflake_environments", toJsonString(accountDto.getSnowflakeEnvironments()));
         }
         if (accountDto.getDescription() != null) {
-            saAttributes.put(ATTR_DESCRIPTION, accountDto.getDescription());
+            tagsMap.put("description", accountDto.getDescription());
         }
         if (accountDto.getIsTest() != null) {
-            saAttributes.put(ATTR_IS_TEST, accountDto.getIsTest());
+            tagsMap.put("is_test", String.valueOf(accountDto.getIsTest()));
         }
         if (isNonEmpty(accountDto.getDestroySaEnv())) {
-            saAttributes.put(ATTR_DESTROY_SA_ENV, accountDto.getDestroySaEnv());
+            tagsMap.put("destroy_sa_env", toJsonString(accountDto.getDestroySaEnv()));
+        }
+
+        if (!tagsMap.isEmpty()) {
+            saAttributes.put(ATTR_TAGS, tagsMap);
         }
 
         String saConstructId = getUniqueConstructId(stack, PREFIX_SA_RESOURCE + accountName);
@@ -335,52 +353,61 @@ public class TerraformGeneratorService {
 
         if (isNonEmpty(accountDto.getContainers())) {
             accountDto.getContainers().forEach((containerName, containerDto) -> {
-                buildContainerResource(stack, accountName, containerName, containerDto);
+                buildContainerResource(stack, accountName, saConstructId, containerName, containerDto);
             });
         }
 
         if (isNonEmpty(accountDto.getQueues())) {
             accountDto.getQueues().forEach((queueName, queueDto) -> {
-                buildQueueResource(stack, accountName, queueName, queueDto);
+                buildQueueResource(stack, accountName, saConstructId, queueName, queueDto);
             });
         }
 
         if (isNonEmpty(accountDto.getEventSubscriptions())) {
             accountDto.getEventSubscriptions().forEach((subName, subDto) -> {
-                buildEventSubscriptionResource(stack, accountName, subName, subDto);
+                buildEventSubscriptionResource(stack, saConstructId, subName, subDto);
             });
         }
     }
 
-    private void buildContainerResource(TerraformStack stack, String saName, String containerName, ContainerDto containerDto) {
-        Map<String, Object> containerAttrs = new HashMap<>();
+    private void buildContainerResource(TerraformStack stack, String saName, String saConstructId, String containerName, ContainerDto containerDto) {
+        Map<String, Object> containerAttrs = new LinkedHashMap<>();
         containerAttrs.put(ATTR_NAME, containerName);
-        containerAttrs.put(ATTR_STORAGE_ACCOUNT_NAME, saName);
-        if (containerDto.getReplication() != null) containerAttrs.put(ATTR_REPLICATION, containerDto.getReplication());
+        containerAttrs.put("storage_account_id", "${" + RESOURCE_TYPE_STORAGE_ACCOUNT + "." + saConstructId + ".id}");
+        containerAttrs.put("container_access_type", "private");
+
+        // Pack custom container domain attributes into valid 'metadata' map
+        Map<String, String> metaMap = new LinkedHashMap<>();
+        metaMap.put("storage_account_name", saName);
+        if (containerDto.getReplication() != null) metaMap.put("replication", containerDto.getReplication());
 
         if (isNonEmpty(containerDto.getContainerOwners())) {
-            containerAttrs.put(ATTR_CONTAINER_OWNERS, containerDto.getContainerOwners());
+            metaMap.put("container_owners", toJsonString(containerDto.getContainerOwners()));
         }
         if (isNonEmpty(containerDto.getEnvironments())) {
-            containerAttrs.put(ATTR_ENVIRONMENTS, containerDto.getEnvironments());
+            metaMap.put("environments", toJsonString(containerDto.getEnvironments()));
         }
         if (isNonEmpty(containerDto.getLifecycleManagement())) {
-            containerAttrs.put(ATTR_LIFECYCLE_MANAGEMENT, containerDto.getLifecycleManagement());
+            metaMap.put("lifecycle_management", toJsonString(containerDto.getLifecycleManagement()));
         }
         if (containerDto.getReaders() != null) {
-            containerAttrs.put(ATTR_READERS, containerDto.getReaders());
+            metaMap.put("readers", toJsonString(containerDto.getReaders()));
         }
         if (containerDto.getWriters() != null) {
-            containerAttrs.put(ATTR_WRITERS, containerDto.getWriters());
+            metaMap.put("writers", toJsonString(containerDto.getWriters()));
         }
         if (containerDto.getRealResourceName() != null) {
-            containerAttrs.put(ATTR_REAL_RESOURCE_NAME, containerDto.getRealResourceName());
+            metaMap.put("real_resource_name", containerDto.getRealResourceName());
         }
         if (containerDto.getSoftDeleteDuration() != null) {
-            containerAttrs.put(ATTR_SOFT_DELETE_DURATION, containerDto.getSoftDeleteDuration());
+            metaMap.put("soft_delete_duration", String.valueOf(containerDto.getSoftDeleteDuration()));
         }
         if (containerDto.getRetentionDays() != null) {
-            containerAttrs.put(ATTR_RETENTION_DAYS, containerDto.getRetentionDays());
+            metaMap.put("retention_days", String.valueOf(containerDto.getRetentionDays()));
+        }
+
+        if (!metaMap.isEmpty()) {
+            containerAttrs.put("metadata", metaMap);
         }
 
         String containerConstructId = getUniqueConstructId(stack, PREFIX_CONTAINER_RESOURCE + saName + "_" + containerName);
@@ -393,32 +420,39 @@ public class TerraformGeneratorService {
 
         if (isNonEmpty(containerDto.getEventSubscriptions())) {
             containerDto.getEventSubscriptions().forEach((subName, subDto) -> {
-                buildEventSubscriptionResource(stack, saName + "_" + containerName, subName, subDto);
+                buildEventSubscriptionResource(stack, saConstructId, subName, subDto);
             });
         }
     }
 
-    private void buildQueueResource(TerraformStack stack, String saName, String queueName, QueueDto queueDto) {
+    private void buildQueueResource(TerraformStack stack, String saName, String saConstructId, String queueName, QueueDto queueDto) {
         if (queueDto == null) return;
 
-        Map<String, Object> queueAttrs = new HashMap<>();
+        Map<String, Object> queueAttrs = new LinkedHashMap<>();
         queueAttrs.put(ATTR_NAME, queueName);
-        queueAttrs.put(ATTR_STORAGE_ACCOUNT_NAME, saName);
+        queueAttrs.put("storage_account_id", "${" + RESOURCE_TYPE_STORAGE_ACCOUNT + "." + saConstructId + ".id}");
+
+        Map<String, String> metaMap = new LinkedHashMap<>();
+        metaMap.put("storage_account_name", saName);
 
         if (queueDto.getRealResourceName() != null) {
-            queueAttrs.put(ATTR_REAL_RESOURCE_NAME, queueDto.getRealResourceName());
+            metaMap.put("real_resource_name", queueDto.getRealResourceName());
         }
         if (queueDto.getRetentionDays() != null) {
-            queueAttrs.put(ATTR_RETENTION_DAYS, queueDto.getRetentionDays());
+            metaMap.put("retention_days", String.valueOf(queueDto.getRetentionDays()));
         }
         if (queueDto.getDescription() != null) {
-            queueAttrs.put(ATTR_DESCRIPTION, queueDto.getDescription());
+            metaMap.put("description", queueDto.getDescription());
         }
         if (queueDto.getReaders() != null) {
-            queueAttrs.put(ATTR_READERS, queueDto.getReaders());
+            metaMap.put("readers", toJsonString(queueDto.getReaders()));
         }
         if (queueDto.getWriters() != null) {
-            queueAttrs.put(ATTR_WRITERS, queueDto.getWriters());
+            metaMap.put("writers", toJsonString(queueDto.getWriters()));
+        }
+
+        if (!metaMap.isEmpty()) {
+            queueAttrs.put("metadata", metaMap);
         }
 
         String queueConstructId = getUniqueConstructId(stack, PREFIX_QUEUE_RESOURCE + saName + "_" + queueName);
@@ -430,42 +464,80 @@ public class TerraformGeneratorService {
         queueAttrs.forEach(queueResource::addOverride);
     }
 
-    private void buildEventSubscriptionResource(TerraformStack stack, String parentName, String subName, EventSubscriptionDto subDto) {
+    private void buildEventSubscriptionResource(TerraformStack stack, String saConstructId, String subName, EventSubscriptionDto subDto) {
         if (subDto == null) return;
 
-        Map<String, Object> subAttrs = new HashMap<>();
+        Map<String, Object> subAttrs = new LinkedHashMap<>();
         subAttrs.put(ATTR_NAME, subName);
-        subAttrs.put(ATTR_STORAGE_ACCOUNT_NAME, parentName);
+        subAttrs.put("scope", "${" + RESOURCE_TYPE_STORAGE_ACCOUNT + "." + saConstructId + ".id}");
 
-        if (subDto.getEndpointName() != null) {
-            subAttrs.put(ATTR_ENDPOINT_NAME, subDto.getEndpointName());
-        }
-        if (subDto.getEndpointType() != null) {
-            subAttrs.put(ATTR_ENDPOINT_TYPE, subDto.getEndpointType());
-        }
-        if (isNonEmpty(subDto.getEventTypes())) {
-            subAttrs.put(ATTR_EVENT_TYPES, subDto.getEventTypes());
-        }
-        if (subDto.getSubjectBeginsWith() != null) {
-            subAttrs.put(ATTR_SUBJECT_BEGINS_WITH, subDto.getSubjectBeginsWith());
-        }
-        if (subDto.getSubjectEndsWith() != null) {
-            subAttrs.put(ATTR_SUBJECT_ENDS_WITH, subDto.getSubjectEndsWith());
-        }
-        if (isNonEmpty(subDto.getIncludedEventTypes())) {
-            subAttrs.put(ATTR_INCLUDED_EVENT_TYPES, subDto.getIncludedEventTypes());
-        }
-        if (subDto.getEnabled() != null) {
-            subAttrs.put(ATTR_ENABLED, subDto.getEnabled());
+        List<String> eventTypes = isNonEmpty(subDto.getIncludedEventTypes()) ? subDto.getIncludedEventTypes()
+                : (isNonEmpty(subDto.getEventTypes()) ? subDto.getEventTypes() : null);
+        if (isNonEmpty(eventTypes)) {
+            subAttrs.put("included_event_types", eventTypes);
         }
 
-        String eventSubConstructId = getUniqueConstructId(stack, PREFIX_EVENT_SUB_RESOURCE + parentName + "_" + subName);
+        if (subDto.getSubjectBeginsWith() != null || subDto.getSubjectEndsWith() != null) {
+            Map<String, Object> subjectFilter = new LinkedHashMap<>();
+            if (subDto.getSubjectBeginsWith() != null) {
+                subjectFilter.put("subject_begins_with", subDto.getSubjectBeginsWith());
+            }
+            if (subDto.getSubjectEndsWith() != null) {
+                subjectFilter.put("subject_ends_with", subDto.getSubjectEndsWith());
+            }
+            subAttrs.put("subject_filter", List.of(subjectFilter));
+        }
+
+        if (subDto.getEndpointType() != null || subDto.getEndpointName() != null) {
+            Map<String, Object> webhookEndpoint = new LinkedHashMap<>();
+            String name = subDto.getEndpointName() != null ? subDto.getEndpointName() : "endpoint";
+            webhookEndpoint.put("url", "https://example.com/webhooks/" + name);
+            subAttrs.put("webhook_endpoint", List.of(webhookEndpoint));
+        }
+
+        String eventSubConstructId = getUniqueConstructId(stack, PREFIX_EVENT_SUB_RESOURCE + subName);
         TerraformResource eventSubResource = new TerraformResource(stack, eventSubConstructId,
                 TerraformResourceConfig.builder()
                         .terraformResourceType(RESOURCE_TYPE_EVENT_SUBSCRIPTION)
                         .build());
 
         subAttrs.forEach(eventSubResource::addOverride);
+    }
+
+    private String formatAccountTier(String tier) {
+        if (tier == null || tier.isBlank()) return "Standard";
+        String lower = tier.toLowerCase();
+        if ("premium".equals(lower)) return "Premium";
+        if ("standard".equals(lower)) return "Standard";
+        if ("hot".equals(lower)) return "Hot";
+        if ("cool".equals(lower)) return "Cool";
+        return tier.substring(0, 1).toUpperCase() + tier.substring(1);
+    }
+
+    private String formatReplicationType(String redundancy) {
+        if (redundancy == null || redundancy.isBlank()) return "LRS";
+        return redundancy.toUpperCase();
+    }
+
+    private String sanitizeStorageAccountName(String rawName) {
+        if (rawName == null) return "sadefault123";
+        String sanitized = rawName.replaceAll("[^a-zA-Z0-9]", "").toLowerCase();
+        if (sanitized.length() < 3) {
+            sanitized = sanitized + "sa123";
+        }
+        if (sanitized.length() > 24) {
+            sanitized = sanitized.substring(0, 24);
+        }
+        return sanitized;
+    }
+
+    private String toJsonString(Object obj) {
+        if (obj == null) return "";
+        try {
+            return jsonMapper.writeValueAsString(obj);
+        } catch (Exception e) {
+            return String.valueOf(obj);
+        }
     }
 
     private boolean isNonEmpty(Collection<?> col) {
@@ -505,7 +577,7 @@ public class TerraformGeneratorService {
             for (Path candidate : candidatePaths) {
                 if (Files.exists(candidate) && Files.isRegularFile(candidate)) {
                     log.info("Found synthesized CDKTF file for stack '{}' at: {}", stackName, candidate);
-                    return Files.readString(candidate);
+                    return ensureProviderConfigured(candidate);
                 }
             }
 
@@ -518,7 +590,7 @@ public class TerraformGeneratorService {
 
                 if (found.isPresent()) {
                     log.info("Found synthesized CDKTF file via recursive search for stack '{}' at: {}", stackName, found.get());
-                    return Files.readString(found.get());
+                    return ensureProviderConfigured(found.get());
                 }
             }
 
@@ -530,7 +602,7 @@ public class TerraformGeneratorService {
 
                 if (found.isPresent()) {
                     log.warn("Found fallback CDKTF file for stack '{}' at: {}", stackName, found.get());
-                    return Files.readString(found.get());
+                    return ensureProviderConfigured(found.get());
                 }
             }
         } catch (Exception e) {
@@ -538,6 +610,38 @@ public class TerraformGeneratorService {
         }
         log.warn("Synthesized file cdk.tf.json not found for stack {} in directory {}", stackName, outDir.getAbsolutePath());
         return EMPTY_JSON;
+    }
+
+    private String ensureProviderConfigured(Path filePath) {
+        try {
+            String content = Files.readString(filePath);
+            JsonNode tree = jsonMapper.readTree(content);
+            if (tree instanceof ObjectNode objNode) {
+                if (!objNode.has("provider")) {
+                    ObjectNode providerNode = jsonMapper.createObjectNode();
+                    var azurermArray = jsonMapper.createArrayNode();
+                    ObjectNode azurermObj = jsonMapper.createObjectNode();
+                    azurermObj.putObject("features");
+                    azurermObj.put("resource_provider_registrations", "none");
+                    azurermObj.put("subscription_id", "00000000-0000-0000-0000-000000000000");
+                    azurermArray.add(azurermObj);
+                    providerNode.set("azurerm", azurermArray);
+                    objNode.set("provider", providerNode);
+
+                    String updatedJson = jsonMapper.writerWithDefaultPrettyPrinter().writeValueAsString(objNode);
+                    Files.writeString(filePath, updatedJson);
+                    return updatedJson;
+                }
+            }
+            return content;
+        } catch (Exception e) {
+            log.warn("Failed to inject provider configuration into {}", filePath, e);
+            try {
+                return Files.readString(filePath);
+            } catch (Exception ex) {
+                return EMPTY_JSON;
+            }
+        }
     }
 
     private <T> List<List<T>> partition(List<T> list, int size) {

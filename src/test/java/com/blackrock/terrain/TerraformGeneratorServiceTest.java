@@ -224,6 +224,39 @@ class TerraformGeneratorServiceTest {
         assertThat(synthesizedJson).contains("is_test");
         assertThat(synthesizedJson).contains("destroy_sa_env");
     }
+
+    @Test
+    @DisplayName("Verify synthesized Terraform JSON passes terraform validate CLI command")
+    void testTerraformValidationWithCli() throws Exception {
+        File file = new File("source2.yaml");
+        assertThat(file).exists();
+
+        RootConfig rootConfig = yamlParserService.parseYamlFile(file);
+        String outDir = "target/cdktf_val_test";
+        String stackName = "ValStack";
+
+        terraformGeneratorService.generateTerraformJson(rootConfig, stackName, outDir);
+
+        File stackDir = new File(outDir + "/stacks/" + stackName);
+        assertThat(stackDir).exists();
+
+        Process initProc = new ProcessBuilder("terraform", "init")
+                .directory(stackDir)
+                .redirectErrorStream(true)
+                .start();
+        int initExitCode = initProc.waitFor();
+        assertThat(initExitCode).as("terraform init exit code").isEqualTo(0);
+
+        Process valProc = new ProcessBuilder("terraform", "validate")
+                .directory(stackDir)
+                .redirectErrorStream(true)
+                .start();
+        String valOutput = new String(valProc.getInputStream().readAllBytes());
+        int valExitCode = valProc.waitFor();
+
+        assertThat(valExitCode).as("terraform validate output:\n" + valOutput).isEqualTo(0);
+        assertThat(valOutput).contains("The configuration is valid");
+    }
 }
 
 
