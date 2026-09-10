@@ -257,6 +257,22 @@ class TerraformGeneratorServiceTest {
         assertThat(valExitCode).as("terraform validate output:\n" + valOutput).isEqualTo(0);
         assertThat(valOutput).contains("The configuration is valid");
     }
+
+    @Test
+    @DisplayName("Synthesize Azure RBAC role assignments for readers and writers")
+    void testSynthesizeAccessControlRoleAssignments() throws IOException {
+        File file = new File("source.yaml");
+        assertThat(file).exists();
+
+        RootConfig rootConfig = yamlParserService.parseYamlFile(file);
+        String synthesizedJson = terraformGeneratorService.generateTerraformJson(rootConfig, "RbacStack", "target/cdktf_rbac");
+
+        assertThat(synthesizedJson).contains("azurerm_role_assignment");
+        assertThat(synthesizedJson).contains("Storage Blob Data Reader");
+        assertThat(synthesizedJson).contains("Storage Blob Data Contributor");
+        assertThat(synthesizedJson).contains("docgroksvc");
+        assertThat(synthesizedJson).contains("bf99c869-5802-4717-9b5d-02539e555280");
+    }
 }
 
 

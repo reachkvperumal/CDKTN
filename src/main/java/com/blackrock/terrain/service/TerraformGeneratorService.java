@@ -1,5 +1,6 @@
 package com.blackrock.terrain.service;
 
+import com.blackrock.terrain.dto.AccessControlDto;
 import com.blackrock.terrain.dto.ContainerDto;
 import com.blackrock.terrain.dto.EventSubscriptionDto;
 import com.blackrock.terrain.dto.QueueDto;
@@ -39,6 +40,7 @@ public class TerraformGeneratorService {
     private static final String RESOURCE_TYPE_STORAGE_CONTAINER = "azurerm_storage_container";
     private static final String RESOURCE_TYPE_STORAGE_QUEUE = "azurerm_storage_queue";
     private static final String RESOURCE_TYPE_EVENT_SUBSCRIPTION = "azurerm_eventgrid_event_subscription";
+    private static final String RESOURCE_TYPE_ROLE_ASSIGNMENT = "azurerm_role_assignment";
 
     private static final String ATTR_NAME = "name";
     private static final String ATTR_ACCOUNT_ID = "account_id";
@@ -351,6 +353,14 @@ public class TerraformGeneratorService {
 
         saAttributes.forEach(saResource::addOverride);
 
+        String saScopeRef = "${" + RESOURCE_TYPE_STORAGE_ACCOUNT + "." + saConstructId + ".id}";
+        if (accountDto.getReaders() != null) {
+            buildRoleAssignments(stack, saScopeRef, accountName, accountDto.getReaders(), "Storage Blob Data Reader");
+        }
+        if (accountDto.getWriters() != null) {
+            buildRoleAssignments(stack, saScopeRef, accountName, accountDto.getWriters(), "Storage Blob Data Contributor");
+        }
+
         if (isNonEmpty(accountDto.getContainers())) {
             accountDto.getContainers().forEach((containerName, containerDto) -> {
                 buildContainerResource(stack, accountName, saConstructId, containerName, containerDto);
@@ -417,6 +427,14 @@ public class TerraformGeneratorService {
                         .build());
 
         containerAttrs.forEach(containerResource::addOverride);
+
+        String containerScopeRef = "${" + RESOURCE_TYPE_STORAGE_CONTAINER + "." + containerConstructId + ".id}";
+        if (containerDto.getReaders() != null) {
+            buildRoleAssignments(stack, containerScopeRef, saName + "_" + containerName, containerDto.getReaders(), "Storage Blob Data Reader");
+        }
+        if (containerDto.getWriters() != null) {
+            buildRoleAssignments(stack, containerScopeRef, saName + "_" + containerName, containerDto.getWriters(), "Storage Blob Data Contributor");
+        }
 
         if (isNonEmpty(containerDto.getEventSubscriptions())) {
             containerDto.getEventSubscriptions().forEach((subName, subDto) -> {
@@ -502,6 +520,38 @@ public class TerraformGeneratorService {
                         .build());
 
         subAttrs.forEach(eventSubResource::addOverride);
+    }
+
+    private void buildRoleAssignments(TerraformStack stack, String scopeReference, String parentName, AccessControlDto accessControl, String roleDefinitionName) {
+        if (accessControl == null) return;
+
+        List<String> principals = new ArrayList<>();
+        if (isNonEmpty(accessControl.getServicePrincipal())) {
+            principals.addAll(accessControl.getServicePrincipal());
+        }
+        if (isNonEmpty(accessControl.getGroupId())) {
+            principals.addAll(accessControl.getGroupId());
+        }
+        if (isNonEmpty(accessControl.getExternalUuid())) {
+            principals.addAll(accessControl.getExternalUuid());
+        }
+
+        for (String principal : principals) {
+            if (principal == null || principal.isBlank()) continue;
+
+            Map<String, Object> roleAttrs = new LinkedHashMap<>();
+            roleAttrs.put("scope", scopeReference);
+            roleAttrs.put("role_definition_name", roleDefinitionName);
+            roleAttrs.put("principal_id", principal);
+
+            String roleConstructId = getUniqueConstructId(stack, "role_" + parentName + "_" + roleDefinitionName.replaceAll("[^a-zA-Z0-9]", "_") + "_" + principal);
+            TerraformResource roleResource = new TerraformResource(stack, roleConstructId,
+                    TerraformResourceConfig.builder()
+                            .terraformResourceType(RESOURCE_TYPE_ROLE_ASSIGNMENT)
+                            .build());
+
+            roleAttrs.forEach(roleResource::addOverride);
+        }
     }
 
     private String formatAccountTier(String tier) {
